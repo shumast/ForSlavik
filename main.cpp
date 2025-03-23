@@ -13,6 +13,7 @@
 std::random_device rd;
 std::mt19937 gen(rd());
 
+std::vector<int> sophisticated_queue;
 int N_GRID_SIZE = 3;
 int M_GRID_SIZE = 3;
 int CELL_SIZE = 100;
@@ -25,10 +26,15 @@ int BORDER = 10;
 int NEED_FIRST = 3;
 int NEED_SECOND = 3;
 int QUEUE = 0;
+int FIRST_PLAYER = 0;
+int SECOND_PLAYER = 0;
 int INF = 1e9;
-int MAX_DEPTH = 3;
+int MAX_DEPTH_ALPHA_BETA = 5;
+int MAX_DEPTH_MINIMAX_DEPTH = 5;
 int MAX_CONDITIONS_ON_ONE_LEVEL = 9;
 int MAX_DEPTH_RADIAL_SEARCH = 4;
+double PROBABILITY = 0.5;
+int currentTurn = 0;
 std::chrono::steady_clock::time_point start_time;
 std::chrono::milliseconds time_limit(3000);
 std::chrono::milliseconds time_limit_for_MCST(1000);
@@ -49,23 +55,13 @@ std::ofstream cout("output.txt");
 class TicTacToe {
 public:
     // Initialization
-    TicTacToe() : board_(M_GRID_SIZE, std::vector<int>(N_GRID_SIZE, EMPTY)), currentPlayer_(0) {
-        for (int i = 0; i < M_GRID_SIZE; i++) {
-            for (int j = 0; j < N_GRID_SIZE; j++) {
-                freeFields.insert((i << MAX_LOG_GRID_SIZE) + j);
-            }
-        }
-    }
+    TicTacToe() : board_(M_GRID_SIZE, std::vector<int>(N_GRID_SIZE, EMPTY)), currentPlayer_(0) {}
 
     // Reset
     void reset() {
         board_.assign(M_GRID_SIZE, std::vector<int>(N_GRID_SIZE, EMPTY));
         moves_.clear();
-        for (int i = 0; i < M_GRID_SIZE; i++) {
-            for (int j = 0; j < N_GRID_SIZE; j++) {
-                freeFields.insert((i << MAX_LOG_GRID_SIZE) + j);
-            }
-        }
+        currentTurn = 0;
         currentPlayer_ = 0;
         winner_ = -1;
     }
@@ -81,18 +77,14 @@ public:
     // Make move
     bool makeMove(int x, int y) {
         if (board_[x][y] == EMPTY) {
-            freeFields.erase((x << MAX_LOG_GRID_SIZE) + y);
             moves_.push_back({ x, y });
             board_[x][y] = currentPlayer_;
             checkWinner(x, y);
-            currentPlayer_ = NextPlayer();
+            currentTurn++;
+            currentPlayer_ = sophisticated_queue[currentTurn];
             return true;
         }
         return false;
-    }
-
-    int NextPlayer() {
-        return 1 - currentPlayer_;
     }
 
     int getWinner() {
@@ -301,19 +293,71 @@ public:
                     //cout << ans << "----------------------\n";
                 }
             }
-            cout << x << " " << y << " " << ans << " - \n";
+            //cout << x << " " << y << " " << ans << " - \n";
         }
         return ans;
     }
 
     // Random move
-    void makeRandomMove() {
-        int p = *std::next(freeFields.begin(), gen() % freeFields.size());
-        makeMove(p >> MAX_LOG_GRID_SIZE, p - ((p >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE));
+    //void makeRandomMove() {
+    //    int p = *std::next(freeFields.begin(), gen() % freeFields.size());
+    //    //cout << (p >> MAX_LOG_GRID_SIZE) << " " << p - ((p >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE) << std::endl;
+    //    //cout << currentTurn << std::endl;
+    //    makeMove(p >> MAX_LOG_GRID_SIZE, p - ((p >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE));
+    //}
+
+    // Random move close to others
+    void makeRandomCloseMove() {
+        std::vector<std::pair<int, int>> untriedMoves;
+        for (int i = 0; i < M_GRID_SIZE; i++) {
+            for (int j = 0; j < N_GRID_SIZE; j++) {
+                if (board_[i][j] == EMPTY) {
+                    bool g = false;
+                    for (int ii = -1; ii <= 1; ii++) {
+                        if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
+                            continue;
+                        }
+                        for (int jj = -1; jj <= 1; jj++) {
+                            if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
+                                continue;
+                            }
+                            if (board_[i + ii][j + jj] != EMPTY) {
+                                g = true;
+                                break;
+                            }
+                        }
+                        if (g) {
+                            break;
+                        }
+                    }
+                    if (g) {
+                        untriedMoves.push_back(std::pair<int, int>(i, j));
+                    }
+                }
+            }
+        }
+        if (untriedMoves.empty()) {
+            int i = M_GRID_SIZE / 2, j = N_GRID_SIZE / 2;
+            for (int ii = -1; ii <= 1; ii++) {
+                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
+                    continue;
+                }
+                for (int jj = -1; jj <= 1; jj++) {
+                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
+                        continue;
+                    }
+                    if (board_[i + ii][j + jj] == EMPTY) {
+                        untriedMoves.push_back(std::pair<int, int>(i + ii, j + jj));
+                    }
+                }
+            }
+        }
+        auto p = untriedMoves[gen() % untriedMoves.size()];
+        makeMove(p.first, p.second);
     }
 
     // Simple minimax algo
-    int makeMinimax(int x, int y, int player) {
+    int makeMinimax(int x, int y, int turn) {
         checkWinner(x, y);
         if (!canWin()) {
             return 0;
@@ -321,58 +365,50 @@ public:
         if (winner_ == currentPlayer_) {
             return 10;
         }
-        if (winner_ == 1 - currentPlayer_) {
+        else if (winner_ != -1) {
             return -10;
         }
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        for (auto u : freeFields) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
-            board_[i][j] = NextPlayer();
-            moves.push_back({ {i, j}, makeMinimax(i, j, NextPlayer()) }); // has to change
+        int ans = -INF;
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        for (auto [i, j] : allmoves) {
+            board_[i][j] = sophisticated_queue[turn + 1];
+            if (ans == -INF) {
+                ans = makeMinimax(i, j, turn + 1);
+            }
+            else if (sophisticated_queue[turn] == currentPlayer_) {
+                ans = std::min(ans, makeMinimax(i, j, turn + 1));
+            }
+            else {
+                ans = std::max(ans, makeMinimax(i, j, turn + 1));
+            }
             board_[i][j] = -1;
             winner_ = -1;
         }
-        if (moves.size() == 0) {
-            return 0;
+        if (ans == -INF) {
+            ans = 0;
         }
-        auto best = moves[0];
-        if (player == 1) {
-            for (const auto& i : moves) {
-                if (i.second < best.second) {
-                    best = i;
-                }
-            }
-        }
-        else {
-            for (const auto& i : moves) {
-                if (i.second > best.second) {
-                    best = i;
-                }
-            }
-        }
-        return best.second;
+        return ans;
     }
 
     void makeMinimaxMove() {
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        for (auto u : freeFields) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        std::pair<int, int> ans;
+        int val = -INF;
+        for (auto [i, j] : allmoves) {
             board_[i][j] = currentPlayer_;
-            moves.push_back({ {i, j}, makeMinimax(i, j, currentPlayer_) });
+            int tmp = makeMinimax(i, j, currentTurn);
+            if (val < tmp) {
+                val = tmp;
+                ans = { i, j };
+            }
             board_[i][j] = -1;
             winner_ = -1;
         }
-        auto best = moves[0];
-        for (const auto& i : moves) {
-            if (i.second > best.second) {
-                best = i;
-            }
-        }
-        makeMove(best.first.first, best.first.second);
+        makeMove(ans.first, ans.second);
     }
 
     // Alpha beta optimization
-    int makeMinimaxWithAlphaBeta(int x, int y, int alpha, int beta, int player) {
+    int makeMinimaxWithAlphaBeta(int x, int y, int alpha, int beta, int turn) {
         checkWinner(x, y);
         if (!canWin()) {
             return 0;
@@ -380,169 +416,118 @@ public:
         if (winner_ == currentPlayer_) {
             return 10;
         }
-        if (winner_ == 1 - currentPlayer_) {
+        else if (winner_ != -1) {
             return -10;
         }
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        for (auto u : freeFields) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
-            board_[i][j] = NextPlayer();
-            int result = makeMinimaxWithAlphaBeta(i, j, alpha, beta, NextPlayer());
-            if (player == currentPlayer_) {
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        int ans = -INF;
+        for (auto [i, j] : allmoves) {
+            board_[i][j] = sophisticated_queue[turn + 1];
+            int result = makeMinimaxWithAlphaBeta(i, j, alpha, beta, turn + 1);
+            if (sophisticated_queue[turn] == currentPlayer_) {
                 beta = std::min(result, beta);
             }
             else {
                 alpha = std::max(result, alpha);
             }
-            moves.push_back({ {i, j}, result }); // has to change
+            if (ans == -INF) {
+                ans = result;
+            }
+            else if (sophisticated_queue[turn] == currentPlayer_) {
+                ans = std::min(ans, result);
+            }
+            else {
+                ans = std::max(ans, result);
+            }
             board_[i][j] = -1;
             winner_ = -1;
             if (alpha > beta) {
                 break;
             }
         }
-        if (moves.size() == 0) {
-            return 0;
+        if (ans == -INF) {
+            ans = 0;
         }
-        auto best = moves[0];
-        if (player == currentPlayer_) {
-            for (auto i : moves) {
-                if (i.second < best.second) {
-                    best = i;
-                }
-            }
-        }
-        else {
-            for (auto i : moves) {
-                if (i.second > best.second) {
-                    best = i;
-                }
-            }
-        }
-        return best.second;
+        return ans;
     }
 
     void makeMinimaxWithAlphaBetaMove() {
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        for (auto u : freeFields) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        std::pair<int, int> ans;
+        int val = -INF;
+        for (auto [i, j] : allmoves) {
             board_[i][j] = currentPlayer_;
-            moves.push_back({ {i, j}, makeMinimaxWithAlphaBeta(i, j, -INF, +INF, currentPlayer_) });
+            int tmp = makeMinimaxWithAlphaBeta(i, j, -INF, +INF, currentTurn);
+            if (tmp > val) {
+                val = tmp;
+                ans = { i, j };
+            }
             board_[i][j] = -1;
             winner_ = -1;
         }
-        auto best = moves[0];
-        for (const auto& i : moves) {
-            if (i.second > best.second) {
-                best = i;
-            }
-        }
-        makeMove(best.first.first, best.first.second);
+        makeMove(ans.first, ans.second);
     }
 
     // Using depth for stopping minimax
-    int makeMinimaxWithDepth(int x, int y, int depth, int player) {
+    int makeMinimaxWithDepth(int x, int y, int depth, int turn) {
         checkWinner(x, y);
         if (!canWin()) {
             return 0;
         }
         if (winner_ == currentPlayer_) {
-            return 100 - depth;
+            return 1000 - depth;
         }
-        if (winner_ == 1 - currentPlayer_) {
-            return -100 + depth;
+        else if (winner_ != -1) {
+            return -1000 + depth;
         }
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        std::unordered_set<int> close;
-        for (auto [i, j] : moves_) {
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                        continue;
-                    }
-                    if (board_[i + ii][j + jj] == -1) {
-                        close.insert(((i + ii) << MAX_LOG_GRID_SIZE) + (j + jj));
-                    }
-                }
-            }
-        }
-        for (auto u : close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        int ans = -INF;
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
-                board_[i][j] = 1 - player;
-                moves_.push_back({ i, j });
-                if (depth + 1 <= MAX_DEPTH) {
-                    moves.push_back({ {i, j}, makeMinimaxWithDepth(i, j, depth + 1, 1 - player) }); // has to change
+                board_[i][j] = sophisticated_queue[turn + 1];
+                if (depth + 1 <= MAX_DEPTH_ALPHA_BETA) {
+                    int result = makeMinimaxWithDepth(i, j, depth + 1, turn + 1);
+                    if (ans == -INF) {
+                        ans = result;
+                    }
+                    else if (sophisticated_queue[turn] == currentPlayer_) {
+                        ans = std::min(ans, result);
+                    }
+                    else {
+                        ans = std::max(ans, result);
+                    }
                 }
-                moves_.pop_back();
                 board_[i][j] = -1;
                 winner_ = -1;
             }
         }
-        if (moves.size() == 0) {
-            return 0;
+        if (ans == -INF) {
+            ans = 0;
         }
-        auto best = moves[0];
-        if (player == currentPlayer_) {
-            for (auto i : moves) {
-                if (i.second < best.second) {
-                    best = i;
-                }
-            }
-        }
-        else {
-            for (auto i : moves) {
-                if (i.second > best.second) {
-                    best = i;
-                }
-            }
-        }
-        return best.second;
+        return ans;
     }
 
     void makeMinimaxWithDepthMove() {
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        std::unordered_set<int> close;
-        for (auto [i, j] : moves_) {
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                        continue;
-                    }
-                    if (board_[i + ii][j + jj] == -1) {
-                        close.insert(((i + ii) << MAX_LOG_GRID_SIZE) + (j + jj));
-                    }
-                }
-            }
-        }
-        for (auto u : close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        std::pair<int, int> ans;
+        int val = -INF;
+        for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
-                board_[i][j] = 1;
-                moves_.push_back({ i, j });
-                moves.push_back({ {i, j}, makeMinimaxWithDepth(i, j, 0, 1) });
-                moves_.pop_back();
+                board_[i][j] = currentPlayer_;
+                int tmp = makeMinimaxWithDepth(i, j, 0, currentTurn);
+                if (tmp > val) {
+                    val = tmp;
+                    ans = { i, j };
+                }
                 board_[i][j] = -1;
                 winner_ = -1;
             }
         }
-        auto best = moves[0];
-        for (auto i : moves) {
-            if (i.second > best.second) {
-                best = i;
-            }
-        }
-        makeMove(best.first.first, best.first.second);
+        makeMove(ans.first, ans.second);
     }
 
     // Using time limit for depth minimax
-    int makeMinimaxWithDepthAndTime(int x, int y, int depth, int player) {
+    int makeMinimaxWithDepthAndTime(int x, int y, int depth, int turn) {
         checkWinner(x, y);
         if (!canWin()) {
             return 0;
@@ -550,33 +535,24 @@ public:
         if (winner_ == currentPlayer_) {
             return 100 - depth;
         }
-        if (winner_ == 1 - currentPlayer_) {
+        else if (winner_ != -1) {
             return -100 + depth;
         }
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        std::unordered_set<int> close;
-        for (auto [i, j] : moves_) {
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                        continue;
-                    }
-                    if (board_[i + ii][j + jj] == -1) {
-                        close.insert(((i + ii) << MAX_LOG_GRID_SIZE) + (j + jj));
-                    }
-                }
-            }
-        }
-        for (auto u : close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        int ans = -INF;
+        for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
-                board_[i][j] = NextPlayer();
-                moves_.push_back({ i, j });
-                moves.push_back({ {i, j}, makeMinimaxWithDepthAndTime(i, j, depth + 1, NextPlayer()) }); // has to change
-                moves_.pop_back();
+                board_[i][j] = sophisticated_queue[turn + 1];
+                int result = makeMinimaxWithDepthAndTime(i, j, depth + 1, turn + 1);
+                if (ans == -INF) {
+                    ans = result;
+                }
+                else if (sophisticated_queue[turn] == currentPlayer_) {
+                    ans = std::min(ans, result);
+                }
+                else {
+                    ans = std::max(ans, result);
+                }
                 board_[i][j] = -1;
                 winner_ = -1;
                 if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time) > time_limit) {
@@ -584,53 +560,25 @@ public:
                 }
             }
         }
-        if (moves.size() == 0) {
-            return 0;
+        if (ans == -INF) {
+            ans = 0;
         }
-        auto best = moves[0];
-        if (player == currentPlayer_) {
-            for (auto i : moves) {
-                if (i.second < best.second) {
-                    best = i;
-                }
-            }
-        }
-        else {
-            for (auto i : moves) {
-                if (i.second > best.second) {
-                    best = i;
-                }
-            }
-        }
-        return best.second;
+        return ans;
     }
 
     void makeMinimaxWithDepthAndTimeMove() {
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        std::unordered_set<int> close;
-        for (auto [i, j] : moves_) {
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                        continue;
-                    }
-                    if (board_[i + ii][j + jj] == -1) {
-                        close.insert(((i + ii) << MAX_LOG_GRID_SIZE) + (j + jj));
-                    }
-                }
-            }
-        }
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        std::pair<int, int> ans;
+        int val = -INF;
         start_time = std::chrono::steady_clock::now();
-        for (auto u : close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
                 board_[i][j] = currentPlayer_;
-                moves_.push_back({ i, j });
-                moves.push_back({ {i, j}, makeMinimaxWithDepthAndTime(i, j, 0, currentPlayer_) });
-                moves_.pop_back();
+                int tmp = makeMinimaxWithDepthAndTime(i, j, 0, currentTurn);
+                if (tmp > val) {
+                    val = tmp;
+                    ans = { i, j };
+                }
                 board_[i][j] = -1;
                 winner_ = -1;
                 if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time) > time_limit) {
@@ -638,20 +586,14 @@ public:
                 }
             }
         }
-        auto best = moves[0];
-        for (auto i : moves) {
-            if (i.second > best.second) {
-                best = i;
-            }
-        }
-        makeMove(best.first.first, best.first.second);
+        makeMove(ans.first, ans.second);
     }
 
     // Greedy search using evaluating position
     void makeGreedySearch(int player) {
         int ans = -INF, x = 0, y = 0;
-        for (auto u : freeFields) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        for (auto [i, j] : allmoves) {
             int val = evaluatePosition(i, j, player);
             if (val > ans) {
                 ans = val;
@@ -663,14 +605,11 @@ public:
                 x = i;
                 y = j;
             }
-            //cout << i << " " << j << " " << val << " ---\n";
         }
-        //cout << ans << " " << x << " " << y << "\n";
         makeMove(x, y);
     }
 
     void makeGreedySearchMove() {
-        //cout << currentPlayer_ << " --------------------------------\n";
         makeGreedySearch(currentPlayer_);
     }
 
@@ -1339,11 +1278,10 @@ public:
     // Greedy search using evaluating position on full board
     void makeGreedySearch2(int player) {
         int ans = -INF, x = 0, y = 0;
-        for (auto u : freeFields) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        for (auto [i, j] : allmoves) {
             board_[i][j] = player;
             int val = -evaluatePositionOnBoard(1 - player);
-            //cout << val << " " << i << " " << j << "\n";
             board_[i][j] = -1;
             if (val > ans) {
                 ans = val;
@@ -1355,14 +1293,11 @@ public:
                 x = i;
                 y = j;
             }
-            //cout << i << " " << j << " " << val << " ---\n";
         }
-        //cout << ans << " " << x << " " << y << "\n";
         makeMove(x, y);
     }
 
     void makeGreedySearch2Move() {
-        //cout << currentPlayer_ << " --------------------------------\n";
         makeGreedySearch2(currentPlayer_);
     }
 
@@ -1375,7 +1310,7 @@ public:
         else if (winner_ == 1) {
             return INF - depth;
         }
-        if (depth == MAX_DEPTH) {
+        if (depth == MAX_DEPTH_MINIMAX_DEPTH) {
             if (player == 1) {
                 return -evaluatePositionOnBoard(0);
             }
@@ -1411,40 +1346,24 @@ public:
                 winner_ = -1;
             }
         }
-        /*for (auto u : freeFields) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
-            if (board_[i][j] == -1) {
-                board_[i][j] = 1 - player;
-                moves_.push_back({ i, j });
-                moves.push_back({ {i, j}, makeMinimaxWithDepth2(i, j, depth + 1, 1 - player) });
-                moves_.pop_back();
-                board_[i][j] = -1;
-                winner_ = -1;
-            }
-        }*/
         if (moves.size() == 0) {
             return 0;
         }
         auto best = moves[0];
         if (player == 0) {
-            //cout << "player 0: \n";
             for (auto i : moves) {
-                //cout << i.first.first << " " << i.first.second << " " << i.second << "\n";
                 if (i.second > best.second) {
                     best = i;
                 }
             }
         }
         else {
-            //cout << "player 1: \n";
             for (auto i : moves) {
-                //cout << i.first.first << " " << i.first.second << " " << i.second << "\n";
                 if (i.second < best.second) {
                     best = i;
                 }
             }
         }
-        //cout << "\n";
         return best.second;
     }
 
@@ -1468,7 +1387,6 @@ public:
         }
         for (auto u : close) {
             int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
-            //cout << i << " " << j << " ^^^^^^\n";
             if (board_[i][j] == -1) {
                 board_[i][j] = 1;
                 moves_.push_back({ i, j });
@@ -1480,12 +1398,10 @@ public:
         }
         auto best = moves[0];
         for (auto i : moves) {
-            //cout << i.first.first << " " << i.first.second << " " << i.second << " ------------------------------\n";
             if (i.second > best.second) {
                 best = i;
             }
         }
-        //cout << "\n";
         makeMove(best.first.first, best.first.second);
     }
 
@@ -1559,40 +1475,24 @@ public:
                 winner_ = -1;
             }
         }
-        /*for (auto u : freeFields) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
-            if (board_[i][j] == -1) {
-                board_[i][j] = 1 - player;
-                moves_.push_back({ i, j });
-                moves.push_back({ {i, j}, makeMinimaxWithDepth2(i, j, depth + 1, 1 - player) });
-                moves_.pop_back();
-                board_[i][j] = -1;
-                winner_ = -1;
-            }
-        }*/
         if (moves.size() == 0) {
             return 0;
         }
         auto best = moves[0];
         if (player == 0) {
-            //cout << "player 0: \n";
             for (auto i : moves) {
-                //cout << i.first.first << " " << i.first.second << " " << i.second << "\n";
                 if (i.second > best.second) {
                     best = i;
                 }
             }
         }
         else {
-            //cout << "player 1: \n";
             for (auto i : moves) {
-                //cout << i.first.first << " " << i.first.second << " " << i.second << "\n";
                 if (i.second < best.second) {
                     best = i;
                 }
             }
         }
-        //cout << "\n";
         return best.second;
     }
     void makeRadialSearchMove() {
@@ -1641,12 +1541,10 @@ public:
         }
         auto best = moves[0];
         for (auto i : moves) {
-            //cout << i.first.first << " " << i.first.second << " " << i.second << " ------------------------------\n";
             if (i.second > best.second) {
                 best = i;
             }
         }
-        //cout << "\n";
         makeMove(best.first.first, best.first.second);
     }
     
@@ -1785,7 +1683,6 @@ public:
 
         Node(std::vector<std::vector<int>> brd, int p, const std::pair<int, int>& m, Node* par) : board(brd), player(p), move(m), parent(par) {
             untriedMoves = allowedNodeMoves();
-            //cout << this << " " << par << std::endl;
         }
 
         ~Node() {
@@ -1856,39 +1753,10 @@ public:
             board[moves[index].first][moves[index].second] = player;
             int win = giveWinner(moves[index].first, moves[index].second, board);
             if (win != -1) {
-                /*for (int i = 0; i < M_GRID_SIZE; i++) {
-                    for (int j = 0; j < N_GRID_SIZE; j++) {
-                        cout << board[i][j] << " ";
-                    }
-                    cout << std::endl;
-                }
-                cout << win << std::endl;*/
                 return win;
             }
             player = 1 - player;
         }
-        /*std::vector<std::pair<int, int>> moves = allowedMoves(board);
-        if (moves.empty()) {
-            return -1;
-        }
-        int index = gen() % moves.size();
-        board[moves[index].first][moves[index].second] = currentPlayer;
-        cout << moves[index].first << " " << moves[index].second << " " << currentPlayer << std::endl;
-        int win = giveWinner(moves[index].first, moves[index].second, board);
-        if (win != -1) {
-            for (int i = 0; i < M_GRID_SIZE; i++) {
-                for (int j = 0; j < N_GRID_SIZE; j++) {
-                    cout << board[i][j] << " ";
-                }
-                cout << std::endl;
-            }
-            cout << win << std::endl;
-            board[moves[index].first][moves[index].second] = -1;
-            return win;
-        }
-        int ans = simulate(board, 1 - currentPlayer);
-        board[moves[index].first][moves[index].second] = -1;
-        return ans;*/
     }
 
     std::pair<int, int> MCTS(std::vector<std::vector<int>> rootBoard, int currentPlayer) {
@@ -1919,9 +1787,6 @@ public:
             if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time) > time_limit_for_MCST) {
                 break;
             }
-            if (i % 1000 == 0) {
-                cout << i << " done\n";
-            }
             Node* node = root;
             int player = currentPlayer;
             std::vector<std::vector<int>> board = rootBoard;
@@ -1929,18 +1794,10 @@ public:
             int result = -1;
             // Selection
             while (node->untriedMoves.empty() && !node->children.empty()) {
-                //cout << node << std::endl;
                 node = node->selectChild();
-                //cout << node << std::endl;
-                //cout << node->move.first << " " << node->move.second << std::endl;
                 board[node->move.first][node->move.second] = player;
                 last = node->move;
                 player = node->player;
-                /*int win = giveWinner(last.first, last.second, board);
-                if (win != -1) {
-                    result = win;
-                    break;
-                }*/
             }
 
             // Expansion
@@ -1950,50 +1807,24 @@ public:
                 last = m;
                 node = node->addChild(m, 1 - node->player);
                 player = node->player;
-                /*int win = giveWinner(last.first, last.second, board);
-                if (win != -1) {
-                    result = win;
-                }*/
             }
 
             // Simulation
             if (result == -1) {
                 result = simulate(board, player, last);
-                cout << "pizda" << std::endl;
-                for (int i = 0; i < M_GRID_SIZE; i++) {
-                    for (int j = 0; j < N_GRID_SIZE; j++) {
-                        cout << board[i][j] << " ";
-                    }
-                    cout << std::endl;
-                }
-                cout << player << " " << result << std::endl;
             }
-            else {
-                cout << "pizdets" << std::endl;
-                for (int i = 0; i < M_GRID_SIZE; i++) {
-                    for (int j = 0; j < N_GRID_SIZE; j++) {
-                        cout << board[i][j] << " ";
-                    }
-                    cout << std::endl;
-                }
-                cout << player << " " << result << std::endl;
-            }
-            cout << result << " - result " << player << std::endl;
 
             // Backpropagation
             while (node != nullptr) {
-                //cout << node->player << " - player " << std::endl;
                 if (node->player == result) {
                     node->update(1);
                 }
-                /* else if (result == -1) {
+                else if (result == -1) {
                     node->update(0.5);
-                }*/
+                }
                 else {
                     node->update(0);
                 }
-                //cout << node << " " << node->move.first << " " << node->move.second << std::endl;
-                //board[node->move.first][node->move.second] = -1;
                 node = node->parent;
             }
         }
@@ -2002,13 +1833,11 @@ public:
         Node* bestChild = nullptr;
         double bestWinRate = 1.0;
         for (auto child : root->children) {
-            cout << child->move.first << " " << child->move.second << " - move\n";
             double winRate = (double)child->wins / (child->visits + 1e-4);
             if (winRate <= bestWinRate) {
                 bestWinRate = winRate;
                 bestChild = child;
             }
-            cout << winRate << std::endl;
         }
         std::pair<int, int> bestMove = bestChild->move;
         delete root;
@@ -2022,10 +1851,10 @@ public:
 
     // ant colonie
 
+
     std::vector<std::vector<int>> board_;
 private:
     std::vector<std::pair<int, int>> moves_;
-    std::set<int> freeFields;
     int currentPlayer_ = 0;
     int winner_ = -1;
 };
@@ -2063,7 +1892,7 @@ void drawBoard(sf::RenderWindow& window, const TicTacToe& game) {
 }
 
 void showMenu() {
-    sf::RenderWindow menuWindow(sf::VideoMode(400, 300), "Menu", sf::Style::Close);
+    sf::RenderWindow menuWindow(sf::VideoMode(400, 420), "Menu", sf::Style::Close);
     sf::Font font;
     font.loadFromFile("arial.ttf");
 
@@ -2103,16 +1932,69 @@ void showMenu() {
     conditionWhiteText.setFillColor(sf::Color::Black);
     conditionWhiteText.setPosition(250, 200);
 
-    std::string firstPlayerText = "Two players";
+    std::string firstPlayerText1 = "First human";
+    if (FIRST_PLAYER == 1) {
+        firstPlayerText1 = "First easy bot";
+    }
+    else if (FIRST_PLAYER == 2) {
+        firstPlayerText1 = "First medium bot";
+    }
+    else if (FIRST_PLAYER == 3) {
+        firstPlayerText1 = "First hard bot";
+    }
+    sf::Text turnText1(firstPlayerText1, font, 20);
+    turnText1.setFillColor(sf::Color::Black);
+    turnText1.setPosition(50, 240);
+
+    std::string firstPlayerText2 = "Second human";
+    if (SECOND_PLAYER == 1) {
+        firstPlayerText2 = "Second easy bot";
+    }
+    else if (SECOND_PLAYER == 2) {
+        firstPlayerText2 = "Second medium bot";
+    }
+    else if (SECOND_PLAYER == 3) {
+        firstPlayerText2 = "Second hard bot";
+    }
+    sf::Text turnText2(firstPlayerText2, font, 20);
+    turnText2.setFillColor(sf::Color::Black);
+    turnText2.setPosition(50, 285);
+
+    std::string firstPlayerText3 = "Ordinary queue"; // (WB)
     if (QUEUE == 1) {
-        firstPlayerText = "VS easy bot";
+        firstPlayerText3 = "Marcel queue"; // W(BBWW)
     }
-    if (QUEUE == 2) {
-        firstPlayerText = "VS hard bot";
+    else if (QUEUE == 2) {
+        firstPlayerText3 = "(2, 2) queue"; // (WWBB)
     }
-    sf::Text turnText(firstPlayerText, font, 20);
-    turnText.setFillColor(sf::Color::Black);
-    turnText.setPosition(50, 240);
+    else if (QUEUE == 3) {
+        firstPlayerText3 = "Progressive queue"; // WBBWWWBBBB...
+    }
+    else if (QUEUE == 4) {
+        firstPlayerText3 = "Random queue"; // with probability p
+    }
+    sf::Text turnText3(firstPlayerText3, font, 20);
+    turnText3.setFillColor(sf::Color::Black);
+    turnText3.setPosition(50, 330);
+
+    std::string firstPlayerText4 = "Probability queue";
+    sf::Text turnText4(firstPlayerText4, font, 20);
+    turnText4.setFillColor(sf::Color::Black);
+    turnText4.setPosition(50, 375);
+
+    sf::RectangleShape inputBox(sf::Vector2f(100, 30));
+    inputBox.setFillColor(sf::Color::White);
+    inputBox.setOutlineColor(sf::Color::Black);
+    inputBox.setOutlineThickness(2);
+    inputBox.setPosition(250, 375);
+
+    sf::Text inputText;
+    inputText.setFont(font);
+    inputText.setFillColor(sf::Color::Black);
+    inputText.setCharacterSize(24);
+    inputText.setPosition(inputBox.getPosition().x + 10, inputBox.getPosition().y + 1);
+    std::string currentInput = "0.5";
+    inputText.setString(currentInput);
 
     sf::RectangleShape boardWidthButtonUp(sf::Vector2f(30, 30));
     boardWidthButtonUp.setPosition(320, 80);
@@ -2142,15 +2024,75 @@ void showMenu() {
     conditionWhiteButtonDown.setPosition(285, 200);
     conditionWhiteButtonDown.setFillColor(sf::Color::Red);
 
-    sf::RectangleShape toggleTurnButton(sf::Vector2f(100, 30));
-    toggleTurnButton.setPosition(250, 240);
-    toggleTurnButton.setFillColor(sf::Color::Blue);
+    sf::RectangleShape toggleTurnButton1(sf::Vector2f(100, 30));
+    toggleTurnButton1.setPosition(250, 240);
+    toggleTurnButton1.setFillColor(sf::Color::Black);
+
+    sf::RectangleShape toggleTurnButton2(sf::Vector2f(100, 30));
+    toggleTurnButton2.setPosition(250, 285);
+    toggleTurnButton2.setFillColor(sf::Color::Red);
+
+    sf::RectangleShape toggleTurnButton3(sf::Vector2f(100, 30));
+    toggleTurnButton3.setPosition(250, 330);
+    toggleTurnButton3.setFillColor(sf::Color::Blue);
 
     while (menuWindow.isOpen()) {
         sf::Event event;
         while (menuWindow.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
+            if (event.type == sf::Event::Closed) {
+                PROBABILITY = std::stof(currentInput);
+                if (QUEUE == 0) { // (WB)
+                    for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE; i++) {
+                        sophisticated_queue.push_back(i & 1);
+                    }
+                }
+                else if (QUEUE == 1) { // W(BBWW)
+                    sophisticated_queue.push_back(0);
+                    for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE - 1; i++) {
+                        if (i % 4 < 2) {
+                            sophisticated_queue.push_back(1);
+                        }
+                        else {
+                            sophisticated_queue.push_back(0);
+                        }
+                    }
+                }
+                else if (QUEUE == 2) { // (WWBB)
+                    for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE; i++) {
+                        if (i % 4 < 2) {
+                            sophisticated_queue.push_back(0);
+                        }
+                        else {
+                            sophisticated_queue.push_back(1);
+                        }
+                    }
+                }
+                else if (QUEUE == 3) { // WBBWWWBBBB...
+                    int turn = 0, cap = 1;
+                    for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE; i++) {
+                        if (cap > 0) {
+                            sophisticated_queue.push_back(turn & 1);
+                            cap--;
+                        }
+                        else {
+                            turn++;
+                            cap = turn;
+                            sophisticated_queue.push_back(turn & 1);
+                        }
+                    }
+                }
+                else if (QUEUE == 4) { // with probability p
+                    for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE; i++) {
+                        if ((double)gen() / RAND_MAX / RAND_MAX / 4 < PROBABILITY) {
+                            sophisticated_queue.push_back(0);
+                        }
+                        else {
+                            sophisticated_queue.push_back(1);
+                        }
+                    }
+                }
                 menuWindow.close();
+            }
             if (event.type == sf::Event::MouseButtonPressed) {
                 if (event.mouseButton.button == sf::Mouse::Left) {
                     // increasing sizes
@@ -2193,19 +2135,79 @@ void showMenu() {
                         NEED_SECOND--;
                         conditionWhiteText.setString(std::to_string(NEED_SECOND));
                     }
-                    // choose player or bot
-                    else if (toggleTurnButton.getGlobalBounds().contains(event.mouseButton.x, event.mouseButton.y)) {
-                        QUEUE = (QUEUE + 1) % 3;
-                        firstPlayerText = "Two players";
+                    // choose first player or bot
+                    else if (toggleTurnButton1.getGlobalBounds().contains(event.mouseButton.x, event.mouseButton.y)) {
+                        FIRST_PLAYER = (FIRST_PLAYER + 1) % 4;
+                        if (FIRST_PLAYER == 1) {
+                            firstPlayerText1 = "First easy bot";
+                        }
+                        else if (FIRST_PLAYER == 2) {
+                            firstPlayerText1 = "First medium bot";
+                        }
+                        else if (FIRST_PLAYER == 3) {
+                            firstPlayerText1 = "First hard bot";
+                        }
+                        else {
+                            firstPlayerText1 = "First human";
+                        }
+                        turnText1.setString(firstPlayerText1);
+                    }
+                    else if (toggleTurnButton2.getGlobalBounds().contains(event.mouseButton.x, event.mouseButton.y)) {
+                        SECOND_PLAYER = (SECOND_PLAYER + 1) % 4;
+                        if (SECOND_PLAYER == 1) {
+                            firstPlayerText2 = "Second easy bot";
+                        }
+                        else if (SECOND_PLAYER == 2) {
+                            firstPlayerText2 = "Second medium bot";
+                        }
+                        else if (SECOND_PLAYER == 3) {
+                            firstPlayerText2 = "Second hard bot";
+                        }
+                        else {
+                            firstPlayerText2 = "Second human";
+                        }
+                        turnText2.setString(firstPlayerText2);
+                    }
+                    else if (toggleTurnButton3.getGlobalBounds().contains(event.mouseButton.x, event.mouseButton.y)) {
+                        QUEUE = (QUEUE + 1) % 5;
                         if (QUEUE == 1) {
-                            firstPlayerText = "VS easy bot";
+                            firstPlayerText3 = "Marcel queue"; // W(BBWW)
                         }
-                        if (QUEUE == 2) {
-                            firstPlayerText = "VS hard bot";
+                        else if (QUEUE == 2) {
+                            firstPlayerText3 = "(2, 2) queue"; // (WWBB)
                         }
-                        turnText.setString(firstPlayerText);
+                        else if (QUEUE == 3) {
+                            firstPlayerText3 = "Progressive queue"; // WBBWWWBBBB...
+                        }
+                        else if (QUEUE == 4) {
+                            firstPlayerText3 = "Random queue"; // with probability p
+                        }
+                        else {
+                            firstPlayerText3 = "Ordinary queue"; // (WB)
+                        }
+                        turnText3.setString(firstPlayerText3);
                     }
                 }
+            }
+            if (event.type == sf::Event::TextEntered) {
+                // Обработка клавиши Backspace (ASCII 8)
+                if (event.text.unicode == 8) {
+                    if (!currentInput.empty())
+                        currentInput.pop_back();
+                }
+                // Обработка вводимых символов (ASCII < 128)
+                else if (event.text.unicode < 128) {
+                    char enteredChar = static_cast<char>(event.text.unicode);
+                    // Разрешаем ввод только цифр, точки и знака минус
+                    if ((enteredChar >= '0' && enteredChar <= '9') || enteredChar == '.') {
+                        // Разрешаем только одну точку
+                        if (enteredChar == '.' && currentInput.find('.') != std::string::npos)
+                            continue;
+                        currentInput += enteredChar;
+                    }
+                }
+                // Обновляем отображаемый текст
+                inputText.setString(currentInput);
             }
         }
 
@@ -2219,7 +2221,10 @@ void showMenu() {
         menuWindow.draw(conditionBlackText);
         menuWindow.draw(winWhiteConditionText);
         menuWindow.draw(conditionWhiteText);
-        menuWindow.draw(turnText);
+        menuWindow.draw(turnText1);
+        menuWindow.draw(turnText2);
+        menuWindow.draw(turnText3);
+        menuWindow.draw(turnText4);
         menuWindow.draw(boardWidthButtonUp);
         menuWindow.draw(boardWidthButtonDown);
         menuWindow.draw(boardHeightButtonUp);
@@ -2228,7 +2233,11 @@ void showMenu() {
         menuWindow.draw(conditionBlackButtonDown);
         menuWindow.draw(conditionWhiteButtonUp);
         menuWindow.draw(conditionWhiteButtonDown);
-        menuWindow.draw(toggleTurnButton);
+        menuWindow.draw(toggleTurnButton1);
+        menuWindow.draw(toggleTurnButton2);
+        menuWindow.draw(toggleTurnButton3);
+        menuWindow.draw(inputBox);
+        menuWindow.draw(inputText);
         menuWindow.display();
     }
 }
@@ -2297,7 +2306,7 @@ void showWinnerWindow(sf::RenderWindow& window, int winner) {
 void newWindow();
 
 void newWindow() {
-    sf::RenderWindow window(sf::VideoMode(N_WINDOW_SIZE, M_WINDOW_SIZE), "Gomoku");
+    sf::RenderWindow window(sf::VideoMode(N_WINDOW_SIZE, M_WINDOW_SIZE), "XYK");
     TicTacToe game;
     while (window.isOpen()) {
         sf::Event event;
@@ -2305,31 +2314,71 @@ void newWindow() {
             if (event.type == sf::Event::Closed) {
                 window.close();
             }
-            if (QUEUE == 0 || game.getPlayer() == 0) {
-                if (event.type == sf::Event::MouseButtonPressed) {
-                    if (event.mouseButton.button == sf::Mouse::Left) {
-                        int x = event.mouseButton.x / CELL_SIZE;
-                        int y = event.mouseButton.y / CELL_SIZE;
-                        game.makeMove(y, x);
+            if (sophisticated_queue[currentTurn] == 0) {
+                if (FIRST_PLAYER == 0) {
+                    if (event.type == sf::Event::MouseButtonPressed) {
+                        if (event.mouseButton.button == sf::Mouse::Left) {
+                            int x = event.mouseButton.x / CELL_SIZE;
+                            int y = event.mouseButton.y / CELL_SIZE;
+                            game.makeMove(y, x);
+                        }
                     }
                 }
-            }
-            else if (QUEUE == 1) {
-                game.makeMinimaxWithDepthAndTimeMove();
-            }
-            else if (QUEUE == 2) {
-                std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+                else if (FIRST_PLAYER == 1) {
+                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
 
-                //game.makeRandomMove();
-                //game.makeMinimaxMove();
-                //game.makeMinimaxWithAlphaBetaMove();
-                //game.makeMinimaxWithDepthMove();
-                //game.makeMinimaxWithDepthAndTimeMove();
-                //game.makeGreedySearchMove();
-                //game.makeGreedySearch2Move();
-                //game.makeMinimaxWithDepth2Move();
-                game.makeRadialSearchMove();
-                //game.makeMCTSmove();
+                    //game.makeRandomCloseMove();
+                    //game.makeMinimaxMove();
+                    //game.makeMinimaxWithAlphaBetaMove();
+                    //game.makeMinimaxWithDepthMove();
+                    //game.makeMCTSmove();
+                }
+                else if (FIRST_PLAYER == 2) {
+                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+
+                    //game.makeGreedySearchMove();
+                    //game.makeGreedySearch2Move();
+                    //game.makeRadialSearchMove();
+                }
+                else if (FIRST_PLAYER == 3) {
+                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+
+                    //game.makeMinimaxWithDepth2Move();
+                    //game.makeMinimaxWithDepthAndTimeMove();
+                }
+            }
+            else {
+                if (SECOND_PLAYER == 0) {
+                    if (event.type == sf::Event::MouseButtonPressed) {
+                        if (event.mouseButton.button == sf::Mouse::Left) {
+                            int x = event.mouseButton.x / CELL_SIZE;
+                            int y = event.mouseButton.y / CELL_SIZE;
+                            game.makeMove(y, x);
+                        }
+                    }
+                }
+                else if (SECOND_PLAYER == 1) {
+                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+
+                    game.makeRandomCloseMove();
+                    //game.makeMinimaxMove();
+                    //game.makeMinimaxWithAlphaBetaMove();
+                    //game.makeMinimaxWithDepthMove();
+                    //game.makeMCTSmove();
+                }
+                else if (SECOND_PLAYER == 2) {
+                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+
+                    //game.makeGreedySearchMove();
+                    //game.makeGreedySearch2Move();
+                    game.makeRadialSearchMove();
+                }
+                else if (SECOND_PLAYER == 3) {
+                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+
+                    //game.makeMinimaxWithDepth2Move();
+                    game.makeMinimaxWithDepthAndTimeMove();
+                }
             }
         }
         drawBoard(window, game);

@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <chrono>
 #include <thread>
+#include <windows.h>
 
 std::random_device rd;
 std::mt19937 gen(rd());
@@ -29,12 +30,13 @@ int QUEUE = 0;
 int FIRST_PLAYER = 0;
 int SECOND_PLAYER = 0;
 int INF = 1e9;
-int MAX_DEPTH_ALPHA_BETA = 5;
-int MAX_DEPTH_MINIMAX_DEPTH = 5;
+int MAX_DEPTH_ALPHA_BETA = 4;
+int MAX_DEPTH_MINIMAX_DEPTH = 4;
 int MAX_CONDITIONS_ON_ONE_LEVEL = 9;
-int MAX_DEPTH_RADIAL_SEARCH = 4;
+int MAX_DEPTH_RADIAL_SEARCH = 6;
 double PROBABILITY = 0.5;
 int currentTurn = 0;
+unsigned long long int currentHash = 0;
 std::chrono::steady_clock::time_point start_time;
 std::chrono::milliseconds time_limit(3000);
 std::chrono::milliseconds time_limit_for_MCST(1000);
@@ -43,24 +45,48 @@ std::vector<std::pair<int, int>> CheckDirections = { {1,1}, {1,0}, {0,1}, {1,-1}
 // x-1 rocks: 1000000
 // y-1 rocks: 5000 (win > not lose)
 // x-2 rocks with 2 free: 80000
-// y-2 rocks with 2 free: 4000
+// x-2 rocks with 2 free: 4000
 // y-2 rocks with 1 free: 1000
 // y-3 rocks with >= 3 free: 2000
 // close your rocks: 10
 // close enemy rocks: 1
 // 
 std::vector<int> patterns = { 1000000, 5000, 80000, 4000, 1000, 2000, 10, 1 };
+std::vector<std::vector<std::vector<unsigned long long int>>> ZobristTable;
+std::map<unsigned long long int, int> costPosition;
 std::ofstream cout("output.txt");
+
+unsigned long long int randomInt() {
+    std::uniform_int_distribution<unsigned long long int> dist(0, UINT64_MAX);
+    return dist(gen);
+}
 
 class TicTacToe {
 public:
     // Initialization
-    TicTacToe() : board_(M_GRID_SIZE, std::vector<int>(N_GRID_SIZE, EMPTY)), currentPlayer_(0) {}
+    TicTacToe() : board_(M_GRID_SIZE, std::vector<int>(N_GRID_SIZE, EMPTY)), currentPlayer_(0) {
+        ZobristTable = std::vector<std::vector<std::vector<unsigned long long int>>>(M_GRID_SIZE, std::vector<std::vector<unsigned long long int>>(N_GRID_SIZE, std::vector<unsigned long long int>(2)));
+        for (int i = 0; i < M_GRID_SIZE; i++) {
+            for (int j = 0; j < N_GRID_SIZE; j++) {
+                ZobristTable[i][j][0] = randomInt();
+                ZobristTable[i][j][1] = randomInt();
+            }
+        }
+    }
 
     // Reset
     void reset() {
         board_.assign(M_GRID_SIZE, std::vector<int>(N_GRID_SIZE, EMPTY));
         moves_.clear();
+        costPosition.clear();
+        ZobristTable = std::vector<std::vector<std::vector<unsigned long long int>>>(M_GRID_SIZE, std::vector<std::vector<unsigned long long int>>(N_GRID_SIZE, std::vector<unsigned long long int>(2)));
+        for (int i = 0; i < M_GRID_SIZE; i++) {
+            for (int j = 0; j < N_GRID_SIZE; j++) {
+                ZobristTable[i][j][0] = randomInt();
+                ZobristTable[i][j][1] = randomInt();
+            }
+        }
+        currentHash = 0;
         currentTurn = 0;
         currentPlayer_ = 0;
         winner_ = -1;
@@ -79,6 +105,7 @@ public:
         if (board_[x][y] == EMPTY) {
             moves_.push_back({ x, y });
             board_[x][y] = currentPlayer_;
+            currentHash ^= ZobristTable[x][y][currentPlayer_];
             checkWinner(x, y);
             currentTurn++;
             currentPlayer_ = sophisticated_queue[currentTurn];
@@ -231,7 +258,32 @@ public:
                     break;
                 }
             }
-            if (player_ == 0) {
+            if (cnt1 + cnt2 - 1 >= NEED_FIRST) {
+                ans += patterns[0];
+            }
+            else if (cnt1 + cnt2 >= NEED_FIRST && free1 >= 1 && free2 >= 1) {
+                ans += patterns[2];
+            }
+            else if (cnt1 + cnt2 + 1 >= NEED_FIRST && (free1 == 0 || free2 == 0)) {
+                ans += patterns[4];
+            }
+            else if (cnt1 + cnt2 + 2 >= NEED_FIRST && free1 + free2 >= 3) {
+                ans += patterns[5];
+            }
+            else {
+                ans += patterns[6] * (cnt1 + cnt2 - 1) + patterns[7] * (free1 + free2);
+            }
+
+            if (cntt1 + cntt2 - 1 >= NEED_SECOND) {
+                ans += patterns[1];
+            }
+            else if (cntt1 + cntt2 >= NEED_SECOND && freee1 >= 1 && freee2 >= 1) {
+                ans += patterns[3];
+            }
+            else if (freee1 == 0 && gg1 || freee2 == 0 && gg2) {
+                ans += patterns[7];
+            }
+            /*if (player_ == 0) {
                 if (cnt1 + cnt2 - 1 >= NEED_FIRST) {
                     ans += patterns[0];
                 }
@@ -245,9 +297,7 @@ public:
                     ans += patterns[5];
                 }
                 else {
-                    //cout << ans << "----------------------\n";
                     ans += patterns[6] * (cnt1 + cnt2 - 1) + patterns[7] * (free1 + free2);
-                    //cout << ans << "----------------------\n";
                 }
 
                 if (cntt1 + cntt2 - 1 >= NEED_SECOND) {
@@ -257,12 +307,10 @@ public:
                     ans += patterns[3];
                 }
                 else if (freee1 == 0 && gg1 || freee2 == 0 && gg2) {
-                    //cout << ans << "----------------------\n";
                     ans += patterns[7];
-                    //cout << ans << "----------------------\n";
                 }
-            }
-            else {
+            }*/
+            /*else {
                 if (cnt1 + cnt2 - 1 >= NEED_SECOND) {
                     ans += patterns[0];
                 }
@@ -276,11 +324,8 @@ public:
                     ans += patterns[5];
                 }
                 else {
-                    //cout << ans << "----------------------\n";
                     ans += patterns[6] * (cnt1 + cnt2 - 1) + patterns[7] * (free1 + free2);
-                    //cout << ans << "----------------------\n";
                 }
-                //cout << cntt1 << " " << cntt2 << "\n";
                 if (cntt1 + cntt2 - 1 >= NEED_FIRST) {
                     ans += patterns[1];
                 }
@@ -288,25 +333,14 @@ public:
                     ans += patterns[3];
                 }
                 else if (freee1 == 0 && gg1 || freee2 == 0 && gg2) {
-                    //cout << ans << "----------------------\n";
                     ans += patterns[7];
-                    //cout << ans << "----------------------\n";
                 }
-            }
-            //cout << x << " " << y << " " << ans << " - \n";
+            }*/
         }
         return ans;
     }
 
     // Random move
-    //void makeRandomMove() {
-    //    int p = *std::next(freeFields.begin(), gen() % freeFields.size());
-    //    //cout << (p >> MAX_LOG_GRID_SIZE) << " " << p - ((p >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE) << std::endl;
-    //    //cout << currentTurn << std::endl;
-    //    makeMove(p >> MAX_LOG_GRID_SIZE, p - ((p >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE));
-    //}
-
-    // Random move close to others
     void makeRandomCloseMove() {
         std::vector<std::pair<int, int>> untriedMoves;
         for (int i = 0; i < M_GRID_SIZE; i++) {
@@ -357,29 +391,36 @@ public:
     }
 
     // Simple minimax algo
-    int makeMinimax(int x, int y, int turn) {
+    int makeMinimax(int x, int y, int turn, unsigned long long int hash) {
+        if (costPosition.find(hash) != costPosition.end()) {
+            return costPosition[hash];
+        }
         checkWinner(x, y);
         if (!canWin()) {
+            costPosition[hash] = 0;
             return 0;
         }
         if (winner_ == currentPlayer_) {
+            costPosition[hash] = 10;
             return 10;
         }
         else if (winner_ != -1) {
+            costPosition[hash] = -10;
             return -10;
         }
         int ans = -INF;
         std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
         for (auto [i, j] : allmoves) {
             board_[i][j] = sophisticated_queue[turn + 1];
+            int result = makeMinimax(i, j, turn + 1, hash ^ ZobristTable[i][j][sophisticated_queue[turn + 1]]);
             if (ans == -INF) {
-                ans = makeMinimax(i, j, turn + 1);
+                ans = result;
             }
             else if (sophisticated_queue[turn] == currentPlayer_) {
-                ans = std::min(ans, makeMinimax(i, j, turn + 1));
+                ans = std::min(ans, result);
             }
             else {
-                ans = std::max(ans, makeMinimax(i, j, turn + 1));
+                ans = std::max(ans, result);
             }
             board_[i][j] = -1;
             winner_ = -1;
@@ -387,6 +428,7 @@ public:
         if (ans == -INF) {
             ans = 0;
         }
+        costPosition[hash] = ans;
         return ans;
     }
 
@@ -396,8 +438,12 @@ public:
         int val = -INF;
         for (auto [i, j] : allmoves) {
             board_[i][j] = currentPlayer_;
-            int tmp = makeMinimax(i, j, currentTurn);
+            int tmp = makeMinimax(i, j, currentTurn, currentHash ^ ZobristTable[i][j][currentPlayer_]);
             if (val < tmp) {
+                val = tmp;
+                ans = { i, j };
+            }
+            else if (tmp == val && gen() % R_VARIOTY == 0) {
                 val = tmp;
                 ans = { i, j };
             }
@@ -407,23 +453,29 @@ public:
         makeMove(ans.first, ans.second);
     }
 
-    // Alpha beta optimization
-    int makeMinimaxWithAlphaBeta(int x, int y, int alpha, int beta, int turn) {
+    // Alpha beta optimization for minimax
+    int makeMinimaxWithAlphaBeta(int x, int y, int alpha, int beta, int turn, unsigned long long int hash) {
+        if (costPosition.find(hash) != costPosition.end()) {
+            return costPosition[hash];
+        }
         checkWinner(x, y);
         if (!canWin()) {
+            costPosition[hash] = 0;
             return 0;
         }
         if (winner_ == currentPlayer_) {
+            costPosition[hash] = 10;
             return 10;
         }
         else if (winner_ != -1) {
+            costPosition[hash] = -10;
             return -10;
         }
         std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
         int ans = -INF;
         for (auto [i, j] : allmoves) {
             board_[i][j] = sophisticated_queue[turn + 1];
-            int result = makeMinimaxWithAlphaBeta(i, j, alpha, beta, turn + 1);
+            int result = makeMinimaxWithAlphaBeta(i, j, alpha, beta, turn + 1, hash ^ ZobristTable[i][j][sophisticated_queue[turn + 1]]);
             if (sophisticated_queue[turn] == currentPlayer_) {
                 beta = std::min(result, beta);
             }
@@ -448,6 +500,7 @@ public:
         if (ans == -INF) {
             ans = 0;
         }
+        costPosition[hash] = ans;
         return ans;
     }
 
@@ -457,8 +510,12 @@ public:
         int val = -INF;
         for (auto [i, j] : allmoves) {
             board_[i][j] = currentPlayer_;
-            int tmp = makeMinimaxWithAlphaBeta(i, j, -INF, +INF, currentTurn);
+            int tmp = makeMinimaxWithAlphaBeta(i, j, -INF, +INF, currentTurn, currentHash ^ ZobristTable[i][j][currentPlayer_]);
             if (tmp > val) {
+                val = tmp;
+                ans = { i, j };
+            }
+            else if (tmp == val && gen() % R_VARIOTY == 0) {
                 val = tmp;
                 ans = { i, j };
             }
@@ -469,24 +526,30 @@ public:
     }
 
     // Using depth for stopping minimax
-    int makeMinimaxWithDepth(int x, int y, int depth, int turn) {
+    int makeMinimaxWithDepth(int x, int y, int depth, int turn, unsigned long long int hash) {
+        if (costPosition.find(hash) != costPosition.end()) {
+            return costPosition[hash];
+        }
         checkWinner(x, y);
         if (!canWin()) {
+            costPosition[hash] = 0;
             return 0;
         }
         if (winner_ == currentPlayer_) {
+            costPosition[hash] = 1000 - depth;
             return 1000 - depth;
         }
         else if (winner_ != -1) {
+            costPosition[hash] = -1000 + depth;
             return -1000 + depth;
         }
         int ans = -INF;
         std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
         for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
-                board_[i][j] = sophisticated_queue[turn + 1];
                 if (depth + 1 <= MAX_DEPTH_ALPHA_BETA) {
-                    int result = makeMinimaxWithDepth(i, j, depth + 1, turn + 1);
+                    board_[i][j] = sophisticated_queue[turn + 1];
+                    int result = makeMinimaxWithDepth(i, j, depth + 1, turn + 1, hash ^ ZobristTable[i][j][sophisticated_queue[turn + 1]]);
                     if (ans == -INF) {
                         ans = result;
                     }
@@ -496,14 +559,15 @@ public:
                     else {
                         ans = std::max(ans, result);
                     }
+                    board_[i][j] = -1;
+                    winner_ = -1;
                 }
-                board_[i][j] = -1;
-                winner_ = -1;
             }
         }
         if (ans == -INF) {
             ans = 0;
         }
+        costPosition[hash] = ans;
         return ans;
     }
 
@@ -514,8 +578,12 @@ public:
         for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
                 board_[i][j] = currentPlayer_;
-                int tmp = makeMinimaxWithDepth(i, j, 0, currentTurn);
+                int tmp = makeMinimaxWithDepth(i, j, 0, currentTurn, currentHash ^ ZobristTable[i][j][currentPlayer_]);
                 if (tmp > val) {
+                    val = tmp;
+                    ans = { i, j };
+                }
+                else if (tmp == val && gen() % R_VARIOTY == 0) {
                     val = tmp;
                     ans = { i, j };
                 }
@@ -527,34 +595,42 @@ public:
     }
 
     // Using time limit for depth minimax
-    int makeMinimaxWithDepthAndTime(int x, int y, int depth, int turn) {
+    int makeMinimaxWithDepthAndTime(int x, int y, int depth, int turn, unsigned long long int hash) {
+        if (costPosition.find(hash) != costPosition.end()) {
+            return costPosition[hash];
+        }
         checkWinner(x, y);
         if (!canWin()) {
+            costPosition[hash] = 0;
             return 0;
         }
         if (winner_ == currentPlayer_) {
-            return 100 - depth;
+            costPosition[hash] = 1000 - depth;
+            return 1000 - depth;
         }
         else if (winner_ != -1) {
-            return -100 + depth;
+            costPosition[hash] = -1000 + depth;
+            return -1000 + depth;
         }
         std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
         int ans = -INF;
         for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
-                board_[i][j] = sophisticated_queue[turn + 1];
-                int result = makeMinimaxWithDepthAndTime(i, j, depth + 1, turn + 1);
-                if (ans == -INF) {
-                    ans = result;
+                if (depth + 1 <= MAX_DEPTH_ALPHA_BETA) {
+                    board_[i][j] = sophisticated_queue[turn + 1];
+                    int result = makeMinimaxWithDepthAndTime(i, j, depth + 1, turn + 1, hash ^ ZobristTable[i][j][sophisticated_queue[turn + 1]]);
+                    if (ans == -INF) {
+                        ans = result;
+                    }
+                    else if (sophisticated_queue[turn] == currentPlayer_) {
+                        ans = std::min(ans, result);
+                    }
+                    else {
+                        ans = std::max(ans, result);
+                    }
+                    board_[i][j] = -1;
+                    winner_ = -1;
                 }
-                else if (sophisticated_queue[turn] == currentPlayer_) {
-                    ans = std::min(ans, result);
-                }
-                else {
-                    ans = std::max(ans, result);
-                }
-                board_[i][j] = -1;
-                winner_ = -1;
                 if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time) > time_limit) {
                     break;
                 }
@@ -563,6 +639,7 @@ public:
         if (ans == -INF) {
             ans = 0;
         }
+        costPosition[hash] = ans;
         return ans;
     }
 
@@ -574,8 +651,12 @@ public:
         for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
                 board_[i][j] = currentPlayer_;
-                int tmp = makeMinimaxWithDepthAndTime(i, j, 0, currentTurn);
+                int tmp = makeMinimaxWithDepthAndTime(i, j, 0, currentTurn, currentHash ^ ZobristTable[i][j][currentPlayer_]);
                 if (tmp > val) {
+                    val = tmp;
+                    ans = { i, j };
+                }
+                else if (tmp == val && gen() % R_VARIOTY == 0) {
                     val = tmp;
                     ans = { i, j };
                 }
@@ -600,7 +681,7 @@ public:
                 x = i;
                 y = j;
             }
-            else if (val == ans && gen() % R_VARIOTY == 1) {
+            else if (val == ans && gen() % R_VARIOTY == 0) {
                 ans = val;
                 x = i;
                 y = j;
@@ -613,14 +694,40 @@ public:
         makeGreedySearch(currentPlayer_);
     }
 
+    // Greedy search using evaluating position for full board
+    void makeGreedySearch2(int player) {
+        int ans = -INF, x = 0, y = 0;
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        for (auto [i, j] : allmoves) {
+            board_[i][j] = player;
+            int val = -evaluatePositionOnBoard(1 - player);
+            if (val > ans) {
+                ans = val;
+                x = i;
+                y = j;
+            }
+            else if (val == ans && gen() % R_VARIOTY == 0) {
+                ans = val;
+                x = i;
+                y = j;
+            }
+            board_[i][j] = -1;
+        }
+        makeMove(x, y);
+    }
+
+    void makeGreedySearch2Move() {
+        makeGreedySearch2(currentPlayer_);
+    }
+
     // algorithm A* can't be used here, because it's impossible to find h-function for end position
 
     // Evaluation board position
     int evaluatePositionOnBoard(int current_player) {
         int ans = 0;
         if (current_player == 0) {
-            int need_to_win = NEED_FIRST;
-            int player_ = 0;
+            int need_to_win = NEED_SECOND;
+            int player_ = 1;
             if (N_GRID_SIZE >= need_to_win) {
                 for (int i = 0; i < M_GRID_SIZE; i++) {
                     int cnt_empty = 0, cnt_my = 0;
@@ -636,11 +743,11 @@ public:
                             cnt_my = 0;
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
-                            if (cnt_empty == 2) {
-                                ans += patterns[1];
+                            if (cnt_empty == 1) {
+                                ans -= patterns[1];
                             }
-                            else if (cnt_empty == 3) {
-                                ans += patterns[5];
+                            else if (cnt_empty == 2) {
+                                ans -= patterns[5];
                             }
                             if (board_[i][j - need_to_win] == -1) {
                                 cnt_empty--;
@@ -650,13 +757,13 @@ public:
                             }
                         }
                         if (cnt_my + cnt_empty == need_to_win) {
-                            if (cnt_empty == 1) {
-                                ans += patterns[0];
+                            if (cnt_empty == 0) {
+                                ans -= patterns[0];
                             }
-                            else if (cnt_empty == 2) {
-                                ans += patterns[5];
+                            else if (cnt_empty == 1) {
+                                ans -= patterns[5];
                             }
-                            ans += cnt_my * patterns[6];
+                            ans -= cnt_my * patterns[6];
                         }
                     }
                 }
@@ -676,11 +783,11 @@ public:
                             cnt_my = 0;
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
-                            if (cnt_empty == 2) {
-                                ans += patterns[1];
+                            if (cnt_empty == 1) {
+                                ans -= patterns[1];
                             }
-                            else if (cnt_empty == 3) {
-                                ans += patterns[5];
+                            else if (cnt_empty == 2) {
+                                ans -= patterns[5];
                             }
                             if (board_[i - need_to_win][j] == -1) {
                                 cnt_empty--;
@@ -690,13 +797,13 @@ public:
                             }
                         }
                         if (cnt_my + cnt_empty == need_to_win) {
-                            if (cnt_empty == 1) {
-                                ans += patterns[0];
+                            if (cnt_empty == 0) {
+                                ans -= patterns[0];
                             }
-                            else if (cnt_empty == 2) {
-                                ans += patterns[5];
+                            else if (cnt_empty == 1) {
+                                ans -= patterns[5];
                             }
-                            ans += cnt_my * patterns[6];
+                            ans -= cnt_my * patterns[6];
                         }
                     }
                 }
@@ -717,11 +824,11 @@ public:
                             cnt_my = 0;
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
-                            if (cnt_empty == 2) {
-                                ans += patterns[1];
+                            if (cnt_empty == 1) {
+                                ans -= patterns[1];
                             }
-                            else if (cnt_empty == 3) {
-                                ans += patterns[5];
+                            else if (cnt_empty == 2) {
+                                ans -= patterns[5];
                             }
                             if (board_[i - need_to_win][j + need_to_win] == -1) {
                                 cnt_empty--;
@@ -731,13 +838,13 @@ public:
                             }
                         }
                         if (cnt_my + cnt_empty == need_to_win) {
-                            if (cnt_empty == 1) {
-                                ans += patterns[0];
+                            if (cnt_empty == 0) {
+                                ans -= patterns[0];
                             }
-                            else if (cnt_empty == 2) {
-                                ans += patterns[5];
+                            else if (cnt_empty == 1) {
+                                ans -= patterns[5];
                             }
-                            ans += cnt_my * patterns[6];
+                            ans -= cnt_my * patterns[6];
                         }
                     }
                 }
@@ -782,8 +889,8 @@ public:
                 }
             }
 
-            need_to_win = NEED_SECOND;
-            player_ = 1;
+            need_to_win = NEED_FIRST;
+            player_ = 0;
             if (N_GRID_SIZE >= need_to_win) {
                 for (int i = 0; i < M_GRID_SIZE; i++) {
                     int cnt_empty = 0, cnt_my = 0;
@@ -800,10 +907,10 @@ public:
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
                             if (cnt_empty == 2) {
-                                ans -= patterns[3];
+                                ans += patterns[3];
                             }
                             else if (cnt_empty == 3) {
-                                ans -= patterns[4];
+                                ans += patterns[4];
                             }
                             if (board_[i][j - need_to_win] == -1) {
                                 cnt_empty--;
@@ -813,13 +920,13 @@ public:
                             }
                         }
                         if (cnt_my + cnt_empty == need_to_win) {
-                            if (cnt_empty == 0) {
-                                ans -= patterns[2];
+                            if (cnt_empty == 1) {
+                                ans += patterns[2];
                             }
-                            else if (cnt_empty == 1) {
-                                ans -= patterns[4];
+                            else if (cnt_empty == 2) {
+                                ans += patterns[4];
                             }
-                            ans -= cnt_my * patterns[7];
+                            ans += cnt_my * patterns[7];
                         }
                     }
                 }
@@ -840,10 +947,10 @@ public:
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
                             if (cnt_empty == 2) {
-                                ans -= patterns[3];
+                                ans += patterns[3];
                             }
                             else if (cnt_empty == 3) {
-                                ans -= patterns[4];
+                                ans += patterns[4];
                             }
                             if (board_[i - need_to_win][j] == -1) {
                                 cnt_empty--;
@@ -853,13 +960,13 @@ public:
                             }
                         }
                         if (cnt_my + cnt_empty == need_to_win) {
-                            if (cnt_empty == 0) {
-                                ans -= patterns[2];
+                            if (cnt_empty == 1) {
+                                ans += patterns[2];
                             }
-                            else if (cnt_empty == 1) {
-                                ans -= patterns[4];
+                            else if (cnt_empty == 2) {
+                                ans += patterns[4];
                             }
-                            ans -= cnt_my * patterns[7];
+                            ans += cnt_my * patterns[7];
                         }
                     }
                 }
@@ -881,10 +988,10 @@ public:
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
                             if (cnt_empty == 2) {
-                                ans -= patterns[3];
+                                ans += patterns[3];
                             }
                             else if (cnt_empty == 3) {
-                                ans -= patterns[4];
+                                ans += patterns[4];
                             }
                             if (board_[i - need_to_win][j + need_to_win] == -1) {
                                 cnt_empty--;
@@ -894,13 +1001,13 @@ public:
                             }
                         }
                         if (cnt_my + cnt_empty == need_to_win) {
-                            if (cnt_empty == 0) {
-                                ans -= patterns[2];
+                            if (cnt_empty == 1) {
+                                ans += patterns[2];
                             }
-                            else if (cnt_empty == 1) {
-                                ans -= patterns[4];
+                            else if (cnt_empty == 2) {
+                                ans += patterns[4];
                             }
-                            ans -= cnt_my * patterns[7];
+                            ans += cnt_my * patterns[7];
                         }
                     }
                 }
@@ -920,10 +1027,10 @@ public:
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
                             if (cnt_empty == 2) {
-                                ans -= patterns[3];
+                                ans += patterns[3];
                             }
                             else if (cnt_empty == 3) {
-                                ans -= patterns[4];
+                                ans += patterns[4];
                             }
                             if (board_[i - need_to_win][j - need_to_win] == -1) {
                                 cnt_empty--;
@@ -933,13 +1040,13 @@ public:
                             }
                         }
                         if (cnt_my + cnt_empty == need_to_win) {
-                            if (cnt_empty == 0) {
-                                ans -= patterns[2];
+                            if (cnt_empty == 1) {
+                                ans += patterns[2];
                             }
-                            else if (cnt_empty == 1) {
-                                ans -= patterns[4];
+                            else if (cnt_empty == 2) {
+                                ans += patterns[4];
                             }
-                            ans -= cnt_my * patterns[7];
+                            ans += cnt_my * patterns[7];
                         }
                     }
                 }
@@ -1126,10 +1233,10 @@ public:
                             cnt_my = 0;
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
-                            if (cnt_empty == 2) {
+                            if (cnt_empty == 1) {
                                 ans -= patterns[3];
                             }
-                            else if (cnt_empty == 3) {
+                            else if (cnt_empty == 2) {
                                 ans -= patterns[4];
                             }
                             if (board_[i][j - need_to_win] == -1) {
@@ -1166,10 +1273,10 @@ public:
                             cnt_my = 0;
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
-                            if (cnt_empty == 2) {
+                            if (cnt_empty == 1) {
                                 ans -= patterns[3];
                             }
-                            else if (cnt_empty == 3) {
+                            else if (cnt_empty == 2) {
                                 ans -= patterns[4];
                             }
                             if (board_[i - need_to_win][j] == -1) {
@@ -1207,10 +1314,10 @@ public:
                             cnt_my = 0;
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
-                            if (cnt_empty == 2) {
+                            if (cnt_empty == 1) {
                                 ans -= patterns[3];
                             }
-                            else if (cnt_empty == 3) {
+                            else if (cnt_empty == 2) {
                                 ans -= patterns[4];
                             }
                             if (board_[i - need_to_win][j + need_to_win] == -1) {
@@ -1246,10 +1353,10 @@ public:
                             cnt_my = 0;
                         }
                         if (cnt_my + cnt_empty == need_to_win + 1) {
-                            if (cnt_empty == 2) {
+                            if (cnt_empty == 1) {
                                 ans -= patterns[3];
                             }
-                            else if (cnt_empty == 3) {
+                            else if (cnt_empty == 2) {
                                 ans -= patterns[4];
                             }
                             if (board_[i - need_to_win][j - need_to_win] == -1) {
@@ -1275,277 +1382,181 @@ public:
         return ans;
     }
 
-    // Greedy search using evaluating position on full board
-    void makeGreedySearch2(int player) {
-        int ans = -INF, x = 0, y = 0;
-        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
-        for (auto [i, j] : allmoves) {
-            board_[i][j] = player;
-            int val = -evaluatePositionOnBoard(1 - player);
-            board_[i][j] = -1;
-            if (val > ans) {
-                ans = val;
-                x = i;
-                y = j;
-            }
-            else if (val == ans && gen() % R_VARIOTY == 1) {
-                ans = val;
-                x = i;
-                y = j;
-            }
-        }
-        makeMove(x, y);
-    }
-
-    void makeGreedySearch2Move() {
-        makeGreedySearch2(currentPlayer_);
-    }
-
     // Using depth for stopping minimax with new function
-    int makeMinimaxWithDepth2(int x, int y, int depth, int player) {
-        checkWinner(x, y);
-        if (winner_ == 0) {
-            return -INF + depth;
+    int makeMinimaxWithDepth2(int x, int y, int depth, int turn, unsigned long long int hash) {
+        if (costPosition.find(hash) != costPosition.end()) {
+            return costPosition[hash];
         }
-        else if (winner_ == 1) {
+        checkWinner(x, y);
+        if (!canWin()) {
+            costPosition[hash] = 0;
+            return 0;
+        }
+        if (winner_ == currentPlayer_) {
+            costPosition[hash] = INF - depth;
             return INF - depth;
         }
+        else if (winner_ != -1) {
+            costPosition[hash] = -INF + depth;
+            return -INF + depth;
+        }
         if (depth == MAX_DEPTH_MINIMAX_DEPTH) {
-            if (player == 1) {
-                return -evaluatePositionOnBoard(0);
-            }
-            else {
-                return evaluatePositionOnBoard(1);
-            }
+            int val = -evaluatePositionOnBoard(1 - sophisticated_queue[turn]);
+            costPosition[hash] = val;
+            return val;
         }
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        std::unordered_set<int> close;
-        for (auto [i, j] : moves_) {
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                        continue;
-                    }
-                    if (board_[i + ii][j + jj] == -1) {
-                        close.insert(((i + ii) << MAX_LOG_GRID_SIZE) + (j + jj));
-                    }
-                }
-            }
-        }
-        for (auto u : close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        int ans = -INF;
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
-                board_[i][j] = 1 - player;
-                moves_.push_back({ i, j });
-                moves.push_back({ {i, j}, makeMinimaxWithDepth2(i, j, depth + 1, 1 - player) });
-                moves_.pop_back();
+                board_[i][j] = sophisticated_queue[turn + 1];
+                int result = makeMinimaxWithDepth2(i, j, depth + 1, turn + 1, hash ^ ZobristTable[i][j][sophisticated_queue[turn + 1]]);
+                if (ans == -INF) {
+                    ans = result;
+                }
+                else if (sophisticated_queue[turn] == currentPlayer_) {
+                    ans = std::min(ans, result);
+                }
+                else {
+                    ans = std::max(ans, result);
+                }
                 board_[i][j] = -1;
                 winner_ = -1;
             }
         }
-        if (moves.size() == 0) {
-            return 0;
+        if (ans == -INF) {
+            ans = 0;
         }
-        auto best = moves[0];
-        if (player == 0) {
-            for (auto i : moves) {
-                if (i.second > best.second) {
-                    best = i;
-                }
-            }
-        }
-        else {
-            for (auto i : moves) {
-                if (i.second < best.second) {
-                    best = i;
-                }
-            }
-        }
-        return best.second;
+        costPosition[hash] = ans;
+        return ans;
     }
 
     void makeMinimaxWithDepth2Move() {
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        std::unordered_set<int> close;
-        for (auto [i, j] : moves_) {
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                        continue;
-                    }
-                    if (board_[i + ii][j + jj] == -1) {
-                        close.insert(((i + ii) << MAX_LOG_GRID_SIZE) + (j + jj));
-                    }
-                }
-            }
-        }
-        for (auto u : close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        std::pair<int, int> ans;
+        int val = -INF;
+        for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
-                board_[i][j] = 1;
-                moves_.push_back({ i, j });
-                moves.push_back({ {i, j}, makeMinimaxWithDepth2(i, j, 0, 1) });
-                moves_.pop_back();
+                board_[i][j] = currentPlayer_;
+                int tmp = makeMinimaxWithDepth2(i, j, 0, currentTurn, currentHash ^ ZobristTable[i][j][currentPlayer_]);
+                if (tmp > val) {
+                    val = tmp;
+                    ans = { i, j };
+                }
+                else if (tmp == val && gen() % R_VARIOTY == 0) {
+                    val = tmp;
+                    ans = { i, j };
+                }
                 board_[i][j] = -1;
                 winner_ = -1;
             }
         }
-        auto best = moves[0];
-        for (auto i : moves) {
-            if (i.second > best.second) {
-                best = i;
-            }
-        }
-        makeMove(best.first.first, best.first.second);
+        makeMove(ans.first, ans.second);
     }
 
     // luchevoi poisk v shirinu
-    int makeRadialSearch(int x, int y, int depth, int player) {
+    int makeRadialSearch(int x, int y, int depth, int turn, unsigned long long int hash) {
+        if (costPosition.find(hash) != costPosition.end()) {
+            return costPosition[hash];
+        }
         checkWinner(x, y);
-        if (winner_ == 0) {
-            return -INF + depth;
-        }
-        else if (winner_ == 1) {
-            return INF - depth;
-        }
-        if (depth == MAX_DEPTH_RADIAL_SEARCH) {
-            if (player == 1) {
-                return -evaluatePositionOnBoard(0);
-            }
-            else {
-                return evaluatePositionOnBoard(1);
-            }
-        }
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        std::unordered_set<int> close;
-        for (auto [i, j] : moves_) {
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                        continue;
-                    }
-                    if (board_[i + ii][j + jj] == -1) {
-                        close.insert(((i + ii) << MAX_LOG_GRID_SIZE) + (j + jj));
-                    }
-                }
-            }
-        }
-        std::vector<std::pair<int, int>> close_moves;
-        for (auto u : close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
-            if (board_[i][j] == -1) {
-                board_[i][j] = 1 - player;
-                if (player == 1) {
-                    close_moves.push_back({ u, -evaluatePositionOnBoard(0) });
-                }
-                else {
-                    close_moves.push_back({ u, evaluatePositionOnBoard(1) });
-                }
-                board_[i][j] = -1;
-                winner_ = -1;
-            }
-        }
-        if (player == 0) {
-            std::sort(close_moves.begin(), close_moves.end(), [](std::pair<int, int> l, std::pair<int, int> r) { return l.second < r.second; });
-        }
-        else {
-            std::sort(close_moves.begin(), close_moves.end(), [](std::pair<int, int> l, std::pair<int, int> r) { return l.second > r.second; });
-        }
-        std::vector<int> top_close(std::min((int)close_moves.size(), MAX_CONDITIONS_ON_ONE_LEVEL));
-        for (int i = 0; i < std::min((int)close_moves.size(), MAX_CONDITIONS_ON_ONE_LEVEL); i++) {
-            top_close[i] = close_moves[i].first;
-        }
-        for (auto u : top_close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
-            if (board_[i][j] == -1) {
-                board_[i][j] = 1 - player;
-                moves_.push_back({ i, j });
-                moves.push_back({ {i, j}, makeRadialSearch(i, j, depth + 1, 1 - player) });
-                moves_.pop_back();
-                board_[i][j] = -1;
-                winner_ = -1;
-            }
-        }
-        if (moves.size() == 0) {
+        if (!canWin()) {
+            costPosition[hash] = 0;
             return 0;
         }
-        auto best = moves[0];
-        if (player == 0) {
-            for (auto i : moves) {
-                if (i.second > best.second) {
-                    best = i;
-                }
-            }
+        if (winner_ == currentPlayer_) {
+            costPosition[hash] = INF - depth;
+            return INF - depth;
         }
-        else {
-            for (auto i : moves) {
-                if (i.second < best.second) {
-                    best = i;
-                }
-            }
+        else if (winner_ != -1) {
+            costPosition[hash] = -INF + depth;
+            return -INF + depth;
         }
-        return best.second;
-    }
-    void makeRadialSearchMove() {
-        std::vector<std::pair<std::pair<int, int>, int>> moves;
-        std::unordered_set<int> close;
-        for (auto [i, j] : moves_) {
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                        continue;
-                    }
-                    if (board_[i + ii][j + jj] == -1) {
-                        close.insert(((i + ii) << MAX_LOG_GRID_SIZE) + (j + jj));
-                    }
-                }
-            }
+        if (depth == MAX_DEPTH_RADIAL_SEARCH) {
+            int val = -evaluatePositionOnBoard(1 - sophisticated_queue[turn]);
+            costPosition[hash] = val;
+            return val;
         }
-        std::vector<std::pair<int, int>> close_moves;
-        for (auto u : close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        std::vector<std::pair<std::pair<int, int>, int>> close_moves;
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        for (auto [i, j] : allmoves) {
             if (board_[i][j] == -1) {
-                board_[i][j] = 1;
-                close_moves.push_back({ u, evaluatePositionOnBoard(1) });
+                board_[i][j] = sophisticated_queue[turn + 1];
+                close_moves.push_back({ { i, j }, -evaluatePositionOnBoard(1 - sophisticated_queue[turn]) });
                 board_[i][j] = -1;
                 winner_ = -1;
             }
         }
-        std::sort(close_moves.begin(), close_moves.end(), [](std::pair<int, int> l, std::pair<int, int> r) { return l.second > r.second; });
-        std::vector<int> top_close(std::min((int)close_moves.size(), MAX_CONDITIONS_ON_ONE_LEVEL));
+        if (sophisticated_queue[turn] != currentPlayer_) {
+            std::sort(close_moves.begin(), close_moves.end(), [](std::pair<std::pair<int, int>, int> l, std::pair<std::pair<int, int>, int> r) { return l.second < r.second; });
+        }
+        else {
+            std::sort(close_moves.begin(), close_moves.end(), [](std::pair<std::pair<int, int>, int> l, std::pair<std::pair<int, int>, int> r) { return l.second > r.second; });
+        }
+        std::vector<std::pair<int, int>> top_close(std::min((int)close_moves.size(), MAX_CONDITIONS_ON_ONE_LEVEL));
         for (int i = 0; i < std::min((int)close_moves.size(), MAX_CONDITIONS_ON_ONE_LEVEL); i++) {
             top_close[i] = close_moves[i].first;
         }
-        for (auto u : top_close) {
-            int i = u >> MAX_LOG_GRID_SIZE, j = u - ((u >> MAX_LOG_GRID_SIZE) << MAX_LOG_GRID_SIZE);
+        int ans = -INF;
+        for (auto [i, j] : top_close) {
             if (board_[i][j] == -1) {
-                board_[i][j] = 1;
-                moves_.push_back({ i, j });
-                moves.push_back({ {i, j}, makeRadialSearch(i, j, 0, 1) });
-                moves_.pop_back();
+                board_[i][j] = sophisticated_queue[turn + 1];
+                int result = makeRadialSearch(i, j, depth + 1, sophisticated_queue[turn + 1], hash ^ ZobristTable[i][j][sophisticated_queue[turn + 1]]);
+                if (ans == -INF) {
+                    ans = result;
+                }
+                else if (sophisticated_queue[turn] == currentPlayer_) {
+                    ans = std::min(ans, result);
+                }
+                else {
+                    ans = std::max(ans, result);
+                }
                 board_[i][j] = -1;
                 winner_ = -1;
             }
         }
-        auto best = moves[0];
-        for (auto i : moves) {
-            if (i.second > best.second) {
-                best = i;
+        if (ans == -INF) {
+            ans = 0;
+        }
+        costPosition[hash] = ans;
+        return ans;
+    }
+
+    void makeRadialSearchMove() {
+        std::vector<std::pair<std::pair<int, int>, int>> close_moves;
+        std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+        for (auto [i, j] : allmoves) {
+            if (board_[i][j] == -1) {
+                board_[i][j] = currentPlayer_;
+                close_moves.push_back({ { i, j }, -evaluatePositionOnBoard(1 - sophisticated_queue[currentTurn]) });
+                board_[i][j] = -1;
+                winner_ = -1;
             }
         }
-        makeMove(best.first.first, best.first.second);
+        std::sort(close_moves.begin(), close_moves.end(), [](std::pair<std::pair<int, int>, int> l, std::pair<std::pair<int, int>, int> r) { return l.second > r.second; });
+        std::vector<std::pair<int, int>> top_close(std::min((int)close_moves.size(), MAX_CONDITIONS_ON_ONE_LEVEL));
+        for (int i = 0; i < std::min((int)close_moves.size(), MAX_CONDITIONS_ON_ONE_LEVEL); i++) {
+            top_close[i] = close_moves[i].first;
+        }
+        std::pair<int, int> ans;
+        int val = -INF;
+        for (auto [i, j] : top_close) {
+            if (board_[i][j] == -1) {
+                board_[i][j] = currentPlayer_;
+                int tmp = makeRadialSearch(i, j, 0, currentTurn, currentHash ^ ZobristTable[i][j][currentPlayer_]);
+                if (tmp > val) {
+                    val = tmp;
+                    ans = { i, j };
+                }
+                else if (tmp == val && gen() % R_VARIOTY == 0) {
+                    val = tmp;
+                    ans = { i, j };
+                }
+                board_[i][j] = -1;
+                winner_ = -1;
+            }
+        }
+        makeMove(ans.first, ans.second);
     }
     
     // geneticheskiy algorithm is too slow
@@ -1582,16 +1593,21 @@ public:
         }
         if (untriedMoves.empty()) {
             int i = M_GRID_SIZE / 2, j = N_GRID_SIZE / 2;
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
+            if (M_GRID_SIZE % 2 == 1 && N_GRID_SIZE % 2 == 1) {
+                untriedMoves.push_back(std::pair<int, int>(i, j));
+            }
+            else {
+                for (int ii = -1; ii <= 0; ii++) {
+                    if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
                         continue;
                     }
-                    if (board[i + ii][j + jj] == EMPTY) {
-                        untriedMoves.push_back(std::pair<int, int>(i + ii, j + jj));
+                    for (int jj = -1; jj <= 0; jj++) {
+                        if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
+                            continue;
+                        }
+                        if (board[i + ii][j + jj] == EMPTY) {
+                            untriedMoves.push_back(std::pair<int, int>(i + ii, j + jj));
+                        }
                     }
                 }
             }
@@ -1849,8 +1865,7 @@ public:
         makeMove(ans.first, ans.second);
     }
 
-    // ant colonie
-
+    // ant colonie is a not good algorithm for this game, MCTS is more better
 
     std::vector<std::vector<int>> board_;
 private:
@@ -2325,26 +2340,27 @@ void newWindow() {
                     }
                 }
                 else if (FIRST_PLAYER == 1) {
-                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
                     //game.makeRandomCloseMove();
                     //game.makeMinimaxMove();
                     //game.makeMinimaxWithAlphaBetaMove();
                     //game.makeMinimaxWithDepthMove();
-                    //game.makeMCTSmove();
-                }
-                else if (FIRST_PLAYER == 2) {
-                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
-
+                    //game.makeMinimaxWithDepthAndTimeMove();
                     //game.makeGreedySearchMove();
-                    //game.makeGreedySearch2Move();
                     //game.makeRadialSearchMove();
                 }
-                else if (FIRST_PLAYER == 3) {
-                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+                else if (FIRST_PLAYER == 2) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+                    //game.makeGreedySearch2Move();
                     //game.makeMinimaxWithDepth2Move();
-                    //game.makeMinimaxWithDepthAndTimeMove();
+                    //game.makeMCTSmove();
+                }
+                else if (FIRST_PLAYER == 3) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                    //game.makeMCTSmove();
                 }
             }
             else {
@@ -2358,26 +2374,26 @@ void newWindow() {
                     }
                 }
                 else if (SECOND_PLAYER == 1) {
-                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-                    game.makeRandomCloseMove();
+                    //game.makeRandomCloseMove();
                     //game.makeMinimaxMove();
                     //game.makeMinimaxWithAlphaBetaMove();
                     //game.makeMinimaxWithDepthMove();
-                    //game.makeMCTSmove();
+                    //game.makeMinimaxWithDepthAndTimeMove();
+                    //game.makeGreedySearchMove();
+                    //game.makeRadialSearchMove();
                 }
                 else if (SECOND_PLAYER == 2) {
-                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-                    //game.makeGreedySearchMove();
                     //game.makeGreedySearch2Move();
-                    game.makeRadialSearchMove();
+                    //game.makeMinimaxWithDepth2Move();
                 }
                 else if (SECOND_PLAYER == 3) {
-                    std::this_thread::sleep_for(std::chrono::nanoseconds(100'000'000));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-                    //game.makeMinimaxWithDepth2Move();
-                    game.makeMinimaxWithDepthAndTimeMove();
+                    //game.makeMCTSmove();
                 }
             }
         }
@@ -2388,7 +2404,7 @@ void newWindow() {
             game.reset();
         }
         if (game.getWinner() != EMPTY) {
-            std::this_thread::sleep_for(std::chrono::nanoseconds(500'000'000));
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
             showWinnerWindow(window, game.getWinner());
             window.clear();
             game.reset();

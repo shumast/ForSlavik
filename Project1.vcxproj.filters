@@ -13,11 +13,18 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>Исходные файлы</Filter>
-    </ClCompile>
+    <Filter Include="Исходные файлы\src">
+      <UniqueIdentifier>{46f7cee5-c679-4627-acf8-4dd3403c1420}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Исходные файлы\src\ui">
+      <UniqueIdentifier>{330773d5-0db2-45c3-87af-71beb8386e04}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Исходные файлы\lib">
+      <UniqueIdentifier>{ff12352e-38e8-43f6-8398-2668f67eab7e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Исходные файлы\src\xyk">
+      <UniqueIdentifier>{6683979e-fc4e-480b-8895-81dd0723ef83}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Font Include="arial.ttf">
@@ -25,8 +32,40 @@
     </Font>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Graphics.hpp">
-      <Filter>Исходные файлы</Filter>
+    <ClInclude Include="xyk.h">
+      <Filter>Исходные файлы\src\xyk</Filter>
     </ClInclude>
+    <ClInclude Include="ui.h">
+      <Filter>Исходные файлы\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="Graphics.hpp">
+      <Filter>Исходные файлы\lib</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <Filter>Исходные файлы\src</Filter>
+    </ClCompile>
+    <ClCompile Include="xyk.cpp">
+      <Filter>Исходные файлы\src\xyk</Filter>
+    </ClCompile>
+    <ClCompile Include="menu.cpp">
+      <Filter>Исходные файлы\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="winner.cpp">
+      <Filter>Исходные файлы\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="grid.cpp">
+      <Filter>Исходные файлы\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="game_window.cpp">
+      <Filter>Исходные файлы\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="bots.cpp">
+      <Filter>Исходные файлы\src\xyk</Filter>
+    </ClCompile>
+    <ClCompile Include="eval.cpp">
+      <Filter>Исходные файлы\src\xyk</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

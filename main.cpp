@@ -14,16 +14,15 @@
 std::random_device rd;
 std::mt19937 gen(rd());
 
-std::vector<int> sophisticated_queue;
 int N_GRID_SIZE = 3;
 int M_GRID_SIZE = 3;
-int CELL_SIZE = 100;
+int CELL_SIZE = 50;
 const int R_VARIOTY = 2;
 const int MAX_LOG_GRID_SIZE = 6;
 int N_WINDOW_SIZE = N_GRID_SIZE * CELL_SIZE;
 int M_WINDOW_SIZE = M_GRID_SIZE * CELL_SIZE;
 int EMPTY = -1;
-int BORDER = 10;
+int BORDER = 5;
 int NEED_FIRST = 3;
 int NEED_SECOND = 3;
 int QUEUE = 0;
@@ -39,7 +38,8 @@ int currentTurn = 0;
 unsigned long long int currentHash = 0;
 std::chrono::steady_clock::time_point start_time;
 std::chrono::milliseconds time_limit(3000);
-std::chrono::milliseconds time_limit_for_MCST(1000);
+std::chrono::milliseconds time_limit_for_MCST(3000);
+std::vector<int> sophisticated_queue;
 std::vector<std::pair<int, int>> CheckDirections = { {1,1}, {1,0}, {0,1}, {1,-1} };
 // patterns for first:
 // x-1 rocks: 1000000
@@ -54,17 +54,16 @@ std::vector<std::pair<int, int>> CheckDirections = { {1,1}, {1,0}, {0,1}, {1,-1}
 std::vector<int> patterns = { 1000000, 5000, 80000, 4000, 1000, 2000, 10, 1 };
 std::vector<std::vector<std::vector<unsigned long long int>>> ZobristTable;
 std::map<unsigned long long int, int> costPosition;
-std::ofstream cout("output.txt");
 
 unsigned long long int randomInt() {
     std::uniform_int_distribution<unsigned long long int> dist(0, UINT64_MAX);
     return dist(gen);
 }
 
-class TicTacToe {
+class XYK {
 public:
     // Initialization
-    TicTacToe() : board_(M_GRID_SIZE, std::vector<int>(N_GRID_SIZE, EMPTY)), currentPlayer_(0) {
+    XYK() : board_(M_GRID_SIZE, std::vector<int>(N_GRID_SIZE, EMPTY)), currentPlayer_(0) {
         ZobristTable = std::vector<std::vector<std::vector<unsigned long long int>>>(M_GRID_SIZE, std::vector<std::vector<unsigned long long int>>(N_GRID_SIZE, std::vector<unsigned long long int>(2)));
         for (int i = 0; i < M_GRID_SIZE; i++) {
             for (int j = 0; j < N_GRID_SIZE; j++) {
@@ -86,14 +85,66 @@ public:
                 ZobristTable[i][j][1] = randomInt();
             }
         }
+        sophisticated_queue.clear();
+        if (QUEUE == 0) { // (WB)
+            for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE; i++) {
+                sophisticated_queue.push_back(i & 1);
+            }
+        }
+        else if (QUEUE == 1) { // W(BBWW)
+            sophisticated_queue.push_back(0);
+            for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE - 1; i++) {
+                if (i % 4 < 2) {
+                    sophisticated_queue.push_back(1);
+                }
+                else {
+                    sophisticated_queue.push_back(0);
+                }
+            }
+        }
+        else if (QUEUE == 2) { // (WWBB)
+            for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE; i++) {
+                if (i % 4 < 2) {
+                    sophisticated_queue.push_back(0);
+                }
+                else {
+                    sophisticated_queue.push_back(1);
+                }
+            }
+        }
+        else if (QUEUE == 3) { // WBBWWWBBBB...
+            int turn = 0, cap = 1;
+            for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE; i++) {
+                if (cap > 0) {
+                    sophisticated_queue.push_back(turn & 1);
+                    cap--;
+                }
+                else {
+                    turn++;
+                    cap = turn;
+                    sophisticated_queue.push_back(turn & 1);
+                }
+            }
+        }
+        else if (QUEUE == 4) { // with probability p
+            for (int i = 0; i < N_GRID_SIZE * M_GRID_SIZE; i++) {
+                if ((double)gen() / RAND_MAX / RAND_MAX / 4 < PROBABILITY) {
+                    sophisticated_queue.push_back(0);
+                }
+                else {
+                    sophisticated_queue.push_back(1);
+                }
+            }
+        }
+        sophisticated_queue.push_back(1 - sophisticated_queue.back());
         currentHash = 0;
         currentTurn = 0;
-        currentPlayer_ = 0;
+        currentPlayer_ = sophisticated_queue[0];
         winner_ = -1;
     }
 
     // Check that point in grid
-    bool InGrid(int x, int y) {
+    static bool InGrid(int x, int y) {
         if (x >= 0 && y >= 0 && x < M_GRID_SIZE && y < N_GRID_SIZE) {
             return true;
         }
@@ -124,6 +175,10 @@ public:
 
     const std::vector<std::vector<int>>& getBoard() const {
         return board_;
+    }
+
+    const std::vector<std::pair<int, int>>& getMoves() const {
+        return moves_;
     }
 
     // Check if someone win and change constant
@@ -342,50 +397,7 @@ public:
 
     // Random move
     void makeRandomCloseMove() {
-        std::vector<std::pair<int, int>> untriedMoves;
-        for (int i = 0; i < M_GRID_SIZE; i++) {
-            for (int j = 0; j < N_GRID_SIZE; j++) {
-                if (board_[i][j] == EMPTY) {
-                    bool g = false;
-                    for (int ii = -1; ii <= 1; ii++) {
-                        if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                            continue;
-                        }
-                        for (int jj = -1; jj <= 1; jj++) {
-                            if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                                continue;
-                            }
-                            if (board_[i + ii][j + jj] != EMPTY) {
-                                g = true;
-                                break;
-                            }
-                        }
-                        if (g) {
-                            break;
-                        }
-                    }
-                    if (g) {
-                        untriedMoves.push_back(std::pair<int, int>(i, j));
-                    }
-                }
-            }
-        }
-        if (untriedMoves.empty()) {
-            int i = M_GRID_SIZE / 2, j = N_GRID_SIZE / 2;
-            for (int ii = -1; ii <= 1; ii++) {
-                if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                    continue;
-                }
-                for (int jj = -1; jj <= 1; jj++) {
-                    if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                        continue;
-                    }
-                    if (board_[i + ii][j + jj] == EMPTY) {
-                        untriedMoves.push_back(std::pair<int, int>(i + ii, j + jj));
-                    }
-                }
-            }
-        }
+        std::vector<std::pair<int, int>> untriedMoves = allowedMoves(board_);
         auto p = untriedMoves[gen() % untriedMoves.size()];
         makeMove(p.first, p.second);
     }
@@ -1562,7 +1574,7 @@ public:
     // geneticheskiy algorithm is too slow
     // because of a lot of variants of boards and conditions for win it's stupid to learn bots
 
-    std::vector<std::pair<int, int>> allowedMoves(std::vector<std::vector<int>>& board) {
+    static std::vector<std::pair<int, int>> allowedMoves(std::vector<std::vector<int>>& board) {
         std::vector<std::pair<int, int>> untriedMoves;
         for (int i = 0; i < M_GRID_SIZE; i++) {
             for (int j = 0; j < N_GRID_SIZE; j++) {
@@ -1593,7 +1605,7 @@ public:
         }
         if (untriedMoves.empty()) {
             int i = M_GRID_SIZE / 2, j = N_GRID_SIZE / 2;
-            if (M_GRID_SIZE % 2 == 1 && N_GRID_SIZE % 2 == 1) {
+            if (M_GRID_SIZE % 2 == 1 && N_GRID_SIZE % 2 == 1 && board[i][j] == EMPTY) {
                 untriedMoves.push_back(std::pair<int, int>(i, j));
             }
             else {
@@ -1615,7 +1627,7 @@ public:
         return untriedMoves;
     }
 
-    int giveWinner(int x, int y, std::vector<std::vector<int>>& board) {
+    static int giveWinner(int x, int y, std::vector<std::vector<int>>& board) {
         for (auto [i, j] : CheckDirections) {
             int cnt1 = 1, cnt2 = 1;
             while (InGrid(x + cnt1 * i, y + cnt1 * j) && board[x + cnt1 * i][y + cnt1 * j] == board[x][y]) {
@@ -1641,64 +1653,17 @@ public:
     // monte carlo
     struct Node {
         std::vector<std::vector<int>> board;
-        int player; // current player in this node
+        int turn; // current turn in this node
         std::pair<int, int> move; // move that we did to get into this node
         Node* parent;
         std::vector<Node*> children;
         double wins = 0; // win = 1, draw = 0.5, lose = 0
         int visits = 0;
+        bool terminate = false;
         std::vector<std::pair<int, int>> untriedMoves;
 
-        std::vector<std::pair<int, int>> allowedNodeMoves() {
-            std::vector<std::pair<int, int>> untriedMoves;
-            for (int i = 0; i < M_GRID_SIZE; i++) {
-                for (int j = 0; j < N_GRID_SIZE; j++) {
-                    if (board[i][j] == EMPTY) {
-                        bool g = false;
-                        for (int ii = -1; ii <= 1; ii++) {
-                            if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                                continue;
-                            }
-                            for (int jj = -1; jj <= 1; jj++) {
-                                if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                                    continue;
-                                }
-                                if (board[i + ii][j + jj] != EMPTY) {
-                                    g = true;
-                                    break;
-                                }
-                            }
-                            if (g) {
-                                break;
-                            }
-                        }
-                        if (g) {
-                            untriedMoves.push_back(std::pair<int, int>(i, j));
-                        }
-                    }
-                }
-            }
-            if (untriedMoves.empty()) {
-                int i = M_GRID_SIZE / 2, j = N_GRID_SIZE / 2;
-                for (int ii = -1; ii <= 1; ii++) {
-                    if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
-                        continue;
-                    }
-                    for (int jj = -1; jj <= 1; jj++) {
-                        if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
-                            continue;
-                        }
-                        if (board[i + ii][j + jj] == EMPTY) {
-                            untriedMoves.push_back(std::pair<int, int>(i + ii, j + jj));
-                        }
-                    }
-                }
-            }
-            return untriedMoves;
-        }
-
-        Node(std::vector<std::vector<int>> brd, int p, const std::pair<int, int>& m, Node* par) : board(brd), player(p), move(m), parent(par) {
-            untriedMoves = allowedNodeMoves();
+        Node(std::vector<std::vector<int>> brd, int t, const std::pair<int, int>& m, Node* par) : board(brd), turn(t), move(m), parent(par) {
+            untriedMoves = allowedMoves(brd);
         }
 
         ~Node() {
@@ -1711,21 +1676,22 @@ public:
             Node* bestChild = nullptr;
             double bestValue = -1;
             for (auto child : children) {
-                double uct = (double)child->wins / (child->visits + 1e-4) + sqrtl(2 * log(visits + 1) / (child->visits + 1e-4));
-                cout << child->move.first << " " << child->move.second << " " << uct << std::endl;
+                double uct = (double)child->wins / child->visits + sqrtl(2 * log(visits + 1) / child->visits);
                 if (uct > bestValue) {
                     bestValue = uct;
                     bestChild = child;
                 }
             }
-            cout << std::endl;
             return bestChild;
         }
 
-        Node* addChild(const std::pair<int, int>& m, int nextPlayer) {
+        Node* addChild(const std::pair<int, int>& m, int nextTurn) {
             std::vector<std::vector<int>> newBoard = board;
-            newBoard[m.first][m.second] = player;
-            Node* child = new Node(newBoard, nextPlayer, m, this);
+            newBoard[m.first][m.second] = sophisticated_queue[turn];
+            Node* child = new Node(newBoard, nextTurn, m, this);
+            if (giveWinner(m.first, m.second, newBoard) != -1) {
+                child->terminate = true;
+            }
             auto it = remove_if(untriedMoves.begin(), untriedMoves.end(), [&m](const std::pair<int, int>& move) {
                 return move.first == m.first && move.second == m.second;
                 });
@@ -1740,7 +1706,7 @@ public:
         }
     };
 
-    int simulate(std::vector<std::vector<int>> board, int player, std::pair<int, int> last) {
+    int simulate(std::vector<std::vector<int>> board, int turn, std::pair<int, int> last) {
         int win = giveWinner(last.first, last.second, board);
         if (win != -1) {
             return win;
@@ -1748,34 +1714,19 @@ public:
         while (true) {
             std::vector<std::pair<int, int>> moves = allowedMoves(board);
             if (moves.empty()) {
-                for (int i = 0; i < M_GRID_SIZE; i++) {
-                    for (int j = 0; j < N_GRID_SIZE; j++) {
-                        cout << board[i][j] << " ";
-                    }
-                    cout << std::endl;
-                }
-                cout << "lolkek" << std::endl;
                 return -1;
             }
             int index = gen() % moves.size();
-            cout << moves[index].first << " " << moves[index].second << std::endl;
-            for (int i = 0; i < M_GRID_SIZE; i++) {
-                for (int j = 0; j < N_GRID_SIZE; j++) {
-                    cout << board[i][j] << " ";
-                }
-                cout << std::endl;
-            }
-            cout << "uuuuu" << std::endl;
-            board[moves[index].first][moves[index].second] = player;
+            board[moves[index].first][moves[index].second] = sophisticated_queue[turn];
             int win = giveWinner(moves[index].first, moves[index].second, board);
             if (win != -1) {
                 return win;
             }
-            player = 1 - player;
+            turn++;
         }
     }
 
-    std::pair<int, int> MCTS(std::vector<std::vector<int>> rootBoard, int currentPlayer) {
+    std::pair<int, int> MCTS(std::vector<std::vector<int>> rootBoard, int currentturn) {
         std::vector<std::pair<int, int>> legal = allowedMoves(rootBoard);
 
         if (legal.empty()) {
@@ -1783,74 +1734,105 @@ public:
         }
 
         for (const auto& move : legal) {
-            rootBoard[move.first][move.second] = currentPlayer;
+            rootBoard[move.first][move.second] = sophisticated_queue[currentTurn];
             int win = giveWinner(move.first, move.second, rootBoard);
             rootBoard[move.first][move.second] = -1;
             if (win != -1) {
                 return move;
             }
         }
-        start_time = std::chrono::steady_clock::now();
-        Node* root = new Node(rootBoard, currentPlayer, std::make_pair(-1, -1), nullptr);
-        for (int i = 0; i < M_GRID_SIZE; i++) {
-            for (int j = 0; j < N_GRID_SIZE; j++) {
-                cout << rootBoard[i][j] << " ";
+        if (FIRST_PLAYER == 3 && QUEUE == 2) {
+            if (sophisticated_queue[currentTurn] == sophisticated_queue[currentTurn + 1]) {
+                for (const auto& move1 : legal) {
+                    rootBoard[move1.first][move1.second] = sophisticated_queue[currentTurn];
+                    for (const auto& move2 : legal) {
+                        if (move1.first == move2.first && move1.second == move2.second) {
+                            continue;
+                        }
+                        rootBoard[move2.first][move2.second] = sophisticated_queue[currentTurn];
+                        int win = giveWinner(move2.first, move2.second, rootBoard);
+                        rootBoard[move2.first][move2.second] = -1;
+                        if (win != -1) {
+                            return move1;
+                        }
+                    }
+                    rootBoard[move1.first][move1.second] = -1;
+                }
             }
-            cout << std::endl;
         }
-        cout << std::endl;
+        else if (SECOND_PLAYER == 3 && QUEUE == 1) {
+            if (sophisticated_queue[currentTurn] == sophisticated_queue[currentTurn + 1]) {
+                for (const auto& move1 : legal) {
+                    rootBoard[move1.first][move1.second] = sophisticated_queue[currentTurn];
+                    for (const auto& move2 : legal) {
+                        if (move1.first == move2.first && move1.second == move2.second) {
+                            continue;
+                        }
+                        rootBoard[move2.first][move2.second] = sophisticated_queue[currentTurn];
+                        int win = giveWinner(move2.first, move2.second, rootBoard);
+                        rootBoard[move2.first][move2.second] = -1;
+                        if (win != -1) {
+                            return move1;
+                        }
+                    }
+                    rootBoard[move1.first][move1.second] = -1;
+                }
+            }
+        }
+
+        start_time = std::chrono::steady_clock::now();
+        Node* root = new Node(rootBoard, currentturn, std::make_pair(-1, -1), nullptr);
         for (int i = 0;; i++) {
             if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time) > time_limit_for_MCST) {
                 break;
             }
             Node* node = root;
-            int player = currentPlayer;
+            int turn = currentturn;
             std::vector<std::vector<int>> board = rootBoard;
             std::pair<int, int> last = { -1,-1 };
             int result = -1;
             // Selection
             while (node->untriedMoves.empty() && !node->children.empty()) {
                 node = node->selectChild();
-                board[node->move.first][node->move.second] = player;
+                board[node->move.first][node->move.second] = sophisticated_queue[turn];
                 last = node->move;
-                player = node->player;
+                turn = node->turn;
             }
 
             // Expansion
-            if (result == -1 && !node->untriedMoves.empty()) {
+            if (!node->untriedMoves.empty() && !node->terminate) {
                 std::pair<int, int> m = node->untriedMoves[gen() % node->untriedMoves.size()];
-                board[m.first][m.second] = node->player;
+                board[m.first][m.second] = sophisticated_queue[node->turn];
                 last = m;
-                node = node->addChild(m, 1 - node->player);
-                player = node->player;
+                node = node->addChild(m, node->turn + 1);
+                turn = node->turn;
             }
 
             // Simulation
             if (result == -1) {
-                result = simulate(board, player, last);
+                result = simulate(board, turn, last);
             }
 
             // Backpropagation
             while (node != nullptr) {
-                if (node->player == result) {
-                    node->update(1);
+                if (sophisticated_queue[node->turn] == result) {
+                    node->update(0);
                 }
                 else if (result == -1) {
                     node->update(0.5);
                 }
                 else {
-                    node->update(0);
+                    node->update(1);
                 }
                 node = node->parent;
             }
         }
 
-
         Node* bestChild = nullptr;
-        double bestWinRate = 1.0;
+        double bestWinRate = 0;
         for (auto child : root->children) {
-            double winRate = (double)child->wins / (child->visits + 1e-4);
-            if (winRate <= bestWinRate) {
+            double winRate = (double)child->wins / child->visits;
+            if (winRate >= bestWinRate) {
                 bestWinRate = winRate;
                 bestChild = child;
             }
@@ -1861,20 +1843,33 @@ public:
     }
 
     void makeMCTSmove() {
-        auto ans = MCTS(board_, currentPlayer_);
+        int position = currentTurn;
+        if (QUEUE == 1) {
+            position = 0;
+        }
+        else if (QUEUE == 2) {
+            position = 1;
+        }
+        else if (QUEUE == 3) {
+            position = 1; //                                        NEED TO FIX
+        }
+        else if (QUEUE == 4) {
+            position = 1; //                                        NEED TO FIX
+        }
+        auto ans = MCTS(board_, position);
         makeMove(ans.first, ans.second);
     }
 
     // ant colonie is a not good algorithm for this game, MCTS is more better
 
-    std::vector<std::vector<int>> board_;
 private:
+    std::vector<std::vector<int>> board_;
     std::vector<std::pair<int, int>> moves_;
-    int currentPlayer_ = 0;
+    int currentPlayer_;
     int winner_ = -1;
 };
 
-void drawBoard(sf::RenderWindow& window, const TicTacToe& game) {
+void drawBoard(sf::RenderWindow& window, const XYK& game) {
     window.clear(sf::Color::White);
     for (int i = 0; i < M_GRID_SIZE; i++) {
         for (int j = 0; j < N_GRID_SIZE; j++) {
@@ -1903,6 +1898,66 @@ void drawBoard(sf::RenderWindow& window, const TicTacToe& game) {
             }
         }
     }
+    sf::RectangleShape boardBorder(sf::Vector2f(N_GRID_SIZE * CELL_SIZE - 2 * BORDER, M_GRID_SIZE * CELL_SIZE - 2 * BORDER));
+    boardBorder.setPosition(BORDER, BORDER);
+    boardBorder.setOutlineThickness(BORDER);
+    boardBorder.setOutlineColor(sf::Color::Black);
+    boardBorder.setFillColor(sf::Color::Transparent);
+    window.draw(boardBorder);
+    static sf::Font font;
+    font.loadFromFile("arial.ttf");
+    std::vector<std::pair<int, int>> moves = game.getMoves();
+    reverse(moves.begin(), moves.end());
+    float movesStartX = N_GRID_SIZE * CELL_SIZE + 10;
+    float movesStartY = 40;
+    sf::Text moveText;
+    moveText.setFont(font);
+    moveText.setString("Moves:");
+    moveText.setCharacterSize(13);
+    moveText.setFillColor(sf::Color::Black);
+    moveText.setPosition(N_GRID_SIZE * CELL_SIZE + 7, 10);
+    window.draw(moveText);
+    int moveIndex = 0;
+    for (const auto& move : moves) {
+        if (movesStartY + moveIndex * 30 >= M_WINDOW_SIZE) {
+            break;
+        }
+        sf::Text moveText;
+        moveText.setFont(font);
+        moveText.setString(std::to_string(move.first + 1) + " " + std::to_string(move.second + 1));
+        moveText.setCharacterSize(15);
+        moveText.setFillColor(sf::Color::Black);
+        moveText.setPosition(movesStartX, movesStartY + moveIndex * 30);
+        window.draw(moveText);
+        moveIndex++;
+    }
+    const std::vector<int>& queue = sophisticated_queue;
+    float queueStartX = 10;
+    float queueStartY = M_GRID_SIZE * CELL_SIZE + 10;
+    int queueIndex = 0;
+    for (int i = currentTurn; i < sophisticated_queue.size(); i++) {
+        if (queueStartX + queueIndex * 20 >= N_WINDOW_SIZE) {
+            break;
+        }
+        sf::Text queueText;
+        queueText.setFont(font);
+        std::string str = "B";
+        if (sophisticated_queue[i] == 1) {
+            str = "R";
+        }
+        queueText.setString(str);
+        queueText.setCharacterSize(20);
+        if (str == "B") {
+            queueText.setFillColor(sf::Color::Black);
+        }
+        else {
+            queueText.setFillColor(sf::Color::Red);
+        }
+        queueText.setPosition(queueStartX + queueIndex * 20, queueStartY);
+        window.draw(queueText);
+        queueIndex++;
+    }
+    
     window.display();
 }
 
@@ -2106,6 +2161,7 @@ void showMenu() {
                         }
                     }
                 }
+                sophisticated_queue.push_back(1 - sophisticated_queue.back());
                 menuWindow.close();
             }
             if (event.type == sf::Event::MouseButtonPressed) {
@@ -2321,15 +2377,15 @@ void showWinnerWindow(sf::RenderWindow& window, int winner) {
 void newWindow();
 
 void newWindow() {
-    sf::RenderWindow window(sf::VideoMode(N_WINDOW_SIZE, M_WINDOW_SIZE), "XYK");
-    TicTacToe game;
+    sf::RenderWindow window(sf::VideoMode(N_WINDOW_SIZE + CELL_SIZE, M_WINDOW_SIZE + CELL_SIZE), "XYK");
+    XYK game;
     while (window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) {
                 window.close();
             }
-            if (sophisticated_queue[currentTurn] == 0) {
+            else if (sophisticated_queue[currentTurn] == 0) {
                 if (FIRST_PLAYER == 0) {
                     if (event.type == sf::Event::MouseButtonPressed) {
                         if (event.mouseButton.button == sf::Mouse::Left) {
@@ -2340,30 +2396,29 @@ void newWindow() {
                     }
                 }
                 else if (FIRST_PLAYER == 1) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    Sleep(100);
 
                     //game.makeRandomCloseMove();
                     //game.makeMinimaxMove();
                     //game.makeMinimaxWithAlphaBetaMove();
                     //game.makeMinimaxWithDepthMove();
                     //game.makeMinimaxWithDepthAndTimeMove();
-                    //game.makeGreedySearchMove();
+                    game.makeGreedySearchMove();
                     //game.makeRadialSearchMove();
                 }
                 else if (FIRST_PLAYER == 2) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    Sleep(100);
 
-                    //game.makeGreedySearch2Move();
+                    game.makeGreedySearch2Move();
                     //game.makeMinimaxWithDepth2Move();
-                    //game.makeMCTSmove();
                 }
                 else if (FIRST_PLAYER == 3) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    Sleep(100);
 
-                    //game.makeMCTSmove();
+                    game.makeMCTSmove();
                 }
             }
-            else {
+            else if (sophisticated_queue[currentTurn] == 1) {
                 if (SECOND_PLAYER == 0) {
                     if (event.type == sf::Event::MouseButtonPressed) {
                         if (event.mouseButton.button == sf::Mouse::Left) {
@@ -2374,50 +2429,49 @@ void newWindow() {
                     }
                 }
                 else if (SECOND_PLAYER == 1) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    Sleep(100);
 
                     //game.makeRandomCloseMove();
                     //game.makeMinimaxMove();
                     //game.makeMinimaxWithAlphaBetaMove();
                     //game.makeMinimaxWithDepthMove();
                     //game.makeMinimaxWithDepthAndTimeMove();
-                    //game.makeGreedySearchMove();
+                    game.makeGreedySearchMove();
                     //game.makeRadialSearchMove();
                 }
                 else if (SECOND_PLAYER == 2) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    Sleep(100);
 
-                    //game.makeGreedySearch2Move();
+                    game.makeGreedySearch2Move();
                     //game.makeMinimaxWithDepth2Move();
                 }
                 else if (SECOND_PLAYER == 3) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    Sleep(100);
 
-                    //game.makeMCTSmove();
+                    game.makeMCTSmove();
                 }
             }
-        }
-        drawBoard(window, game);
-        if (!game.canWin()) {
-            showWinnerWindow(window, 2);
-            window.clear();
-            game.reset();
-        }
-        if (game.getWinner() != EMPTY) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(300));
-            showWinnerWindow(window, game.getWinner());
-            window.clear();
-            game.reset();
-        }
-        if (window.getSize().x != N_WINDOW_SIZE || window.getSize().y != M_WINDOW_SIZE) {
-            window.close();
-            newWindow();
+            drawBoard(window, game);
+            if (!game.canWin()) {
+                showWinnerWindow(window, 2);
+                window.clear();
+                game.reset();
+            }
+            if (game.getWinner() != EMPTY) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                showWinnerWindow(window, game.getWinner());
+                window.clear();
+                game.reset();
+            }
+            if (window.getSize().x != N_WINDOW_SIZE + CELL_SIZE || window.getSize().y != M_WINDOW_SIZE + CELL_SIZE) {
+                window.close();
+                newWindow();
+            }
         }
     }
 }
 
-int main() { 
-
+int main() {
     showMenu();
     newWindow();
 

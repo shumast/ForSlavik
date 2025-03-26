@@ -143,22 +143,22 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="grid.cpp" />
-    <ClCompile Include="bots.cpp" />
-    <ClCompile Include="eval.cpp" />
-    <ClCompile Include="game_window.cpp" />
-    <ClCompile Include="xyk.cpp" />
-    <ClCompile Include="main.cpp" />
-    <ClCompile Include="menu.cpp" />
-    <ClCompile Include="winner.cpp" />
+    <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\ui\game_window.cpp" />
+    <ClCompile Include="src\ui\grid.cpp" />
+    <ClCompile Include="src\ui\menu.cpp" />
+    <ClCompile Include="src\ui\winner.cpp" />
+    <ClCompile Include="src\xyk\bots.cpp" />
+    <ClCompile Include="src\xyk\eval.cpp" />
+    <ClCompile Include="src\xyk\xyk.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Font Include="arial.ttf" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="xyk.h" />
-    <ClInclude Include="Graphics.hpp" />
-    <ClInclude Include="ui.h" />
+    <ClInclude Include="lib\Graphics.hpp" />
+    <ClInclude Include="src\ui\ui.h" />
+    <ClInclude Include="src\xyk\xyk.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

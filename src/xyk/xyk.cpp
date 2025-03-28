@@ -99,6 +99,7 @@ bool XYK::makeMove(int x, int y) {
         checkWinner(x, y);
         currentTurn++;
         currentPlayer_ = sophisticated_queue[currentTurn];
+        costPosition.clear();
         return true;
     }
     return false;

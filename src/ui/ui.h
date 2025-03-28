@@ -1,6 +1,7 @@
 #pragma once
 #include "../xyk/xyk.h"
 #include "../../lib/Graphics.hpp"
+#include <future>
 #include <thread>
 #include <windows.h>
 

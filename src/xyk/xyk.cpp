@@ -84,7 +84,7 @@ void XYK::reset() {
     winner_ = -1;
 }
 
-bool XYK::InGrid(int x, int y) {
+bool InGrid(int x, int y) {
     if (x >= 0 && y >= 0 && x < M_GRID_SIZE && y < N_GRID_SIZE) {
         return true;
     }
@@ -171,17 +171,18 @@ bool XYK::canWin() {
     return false;
 }
 
-std::vector<std::pair<int, int>> XYK::allowedMoves(std::vector<std::vector<int>>& board) {
+std::vector<std::pair<int, int>> allowedMoves(std::vector<std::vector<int>>& board) {
+    int diam = 1;
     std::vector<std::pair<int, int>> untriedMoves;
     for (int i = 0; i < M_GRID_SIZE; i++) {
         for (int j = 0; j < N_GRID_SIZE; j++) {
             if (board[i][j] == EMPTY) {
                 bool g = false;
-                for (int ii = -1; ii <= 1; ii++) {
+                for (int ii = -diam; ii <= diam; ii++) {
                     if (i + ii < 0 || i + ii >= M_GRID_SIZE) {
                         continue;
                     }
-                    for (int jj = -1; jj <= 1; jj++) {
+                    for (int jj = -diam; jj <= diam; jj++) {
                         if (j + jj < 0 || j + jj >= N_GRID_SIZE) {
                             continue;
                         }
@@ -224,7 +225,7 @@ std::vector<std::pair<int, int>> XYK::allowedMoves(std::vector<std::vector<int>>
     return untriedMoves;
 }
 
-int XYK::giveWinner(int x, int y, std::vector<std::vector<int>>& board) {
+int giveWinner(int x, int y, std::vector<std::vector<int>>& board) {
     for (auto [i, j] : CheckDirections) {
         int cnt1 = 1, cnt2 = 1;
         while (InGrid(x + cnt1 * i, y + cnt1 * j) && board[x + cnt1 * i][y + cnt1 * j] == board[x][y]) {

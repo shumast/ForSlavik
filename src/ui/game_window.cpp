@@ -20,26 +20,27 @@ void newWindow() {
                     }
                 }
                 else if (FIRST_PLAYER == 1) {
-                    Sleep(100);
-
-                    //game.makeRandomCloseMove();
-                    //game.makeMinimaxMove();
-                    //game.makeMinimaxWithAlphaBetaMove();
-                    //game.makeMinimaxWithDepthMove();
-                    //game.makeMinimaxWithDepthAndTimeMove();
-                    game.makeGreedySearchMove();
-                    //game.makeRadialSearchMove();
+                    std::future<void> result;
+                    //result = std::async(std::launch::async, &XYK::makeRandomCloseMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithAlphaBetaMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithDepthMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithDepthAndTimeMove, &game);
+                    result = std::async(std::launch::async, &XYK::makeGreedySearchMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeRadialSearchMove, &game);
+                    result.get();
                 }
                 else if (FIRST_PLAYER == 2) {
-                    Sleep(100);
-
-                    game.makeGreedySearch2Move();
-                    //game.makeMinimaxWithDepth2Move();
+                    std::future<void> result;
+                    result = std::async(std::launch::async, &XYK::makeGreedySearch2Move, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithDepth2Move, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithDepth3Move, &game);
+                    result.get();
                 }
                 else if (FIRST_PLAYER == 3) {
-                    Sleep(100);
-
-                    game.makeMCTSmove();
+                    std::future<void> result;
+                    result = std::async(std::launch::async, &XYK::makeMCTSmove, &game);
+                    result.get();
                 }
             }
             else if (sophisticated_queue[currentTurn] == 1) {
@@ -53,26 +54,27 @@ void newWindow() {
                     }
                 }
                 else if (SECOND_PLAYER == 1) {
-                    Sleep(100);
-
-                    //game.makeRandomCloseMove();
-                    //game.makeMinimaxMove();
-                    //game.makeMinimaxWithAlphaBetaMove();
-                    //game.makeMinimaxWithDepthMove();
-                    //game.makeMinimaxWithDepthAndTimeMove();
-                    game.makeGreedySearchMove();
-                    //game.makeRadialSearchMove();
+                    std::future<void> result;
+                    //result = std::async(std::launch::async, &XYK::makeRandomCloseMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithAlphaBetaMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithDepthMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithDepthAndTimeMove, &game);
+                    result = std::async(std::launch::async, &XYK::makeGreedySearchMove, &game);
+                    //result = std::async(std::launch::async, &XYK::makeRadialSearchMove, &game);
+                    result.get();
                 }
                 else if (SECOND_PLAYER == 2) {
-                    Sleep(100);
-
-                    game.makeGreedySearch2Move();
-                    //game.makeMinimaxWithDepth2Move();
+                    std::future<void> result;
+                    result = std::async(std::launch::async, &XYK::makeGreedySearch2Move, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithDepth2Move, &game);
+                    //result = std::async(std::launch::async, &XYK::makeMinimaxWithDepth3Move, &game);
+                    result.get();
                 }
                 else if (SECOND_PLAYER == 3) {
-                    Sleep(100);
-
-                    game.makeMCTSmove();
+                    std::future<void> result;
+                    result = std::async(std::launch::async, &XYK::makeMCTSmove, &game);
+                    result.get();
                 }
             }
             drawBoard(window, game);

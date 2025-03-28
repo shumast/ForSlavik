@@ -370,6 +370,9 @@ int XYK::makeMinimaxWithDepth2(int x, int y, int depth, int turn, unsigned long 
             board_[i][j] = -1;
             winner_ = -1;
         }
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time) > time_limit) {
+            break;
+        }
     }
     if (ans == -INF) {
         ans = 0;
@@ -382,10 +385,88 @@ void XYK::makeMinimaxWithDepth2Move() {
     std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
     std::pair<int, int> ans;
     int val = -INF;
+    start_time = std::chrono::steady_clock::now();
     for (auto [i, j] : allmoves) {
         if (board_[i][j] == -1) {
             board_[i][j] = currentPlayer_;
             int tmp = makeMinimaxWithDepth2(i, j, 0, currentTurn, currentHash ^ ZobristTable[i][j][currentPlayer_]);
+            if (tmp > val) {
+                val = tmp;
+                ans = { i, j };
+            }
+            else if (tmp == val && gen() % R_VARIOTY == 0) {
+                val = tmp;
+                ans = { i, j };
+            }
+            board_[i][j] = -1;
+            winner_ = -1;
+        }
+    }
+    makeMove(ans.first, ans.second);
+}
+
+int XYK::makeMinimaxWithDepth3(int x, int y, int depth, int turn, unsigned long long int hash) {
+    if (costPosition.find(hash) != costPosition.end()) {
+        return costPosition[hash];
+    }
+    checkWinner(x, y);
+    if (!canWin()) {
+        costPosition[hash] = 0;
+        return 0;
+    }
+    if (winner_ == currentPlayer_) {
+        costPosition[hash] = INF - depth;
+        return INF - depth;
+    }
+    else if (winner_ != -1) {
+        costPosition[hash] = -INF + depth;
+        return -INF + depth;
+    }
+    if (depth == MAX_DEPTH_MINIMAX_DEPTH) {
+        board_[x][y] = -1;
+        int val = evaluatePosition(x, y, sophisticated_queue[turn]);
+        board_[x][y] = sophisticated_queue[turn];
+        costPosition[hash] = val;
+        return val;
+    }
+    int ans = -INF;
+    std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+    for (auto [i, j] : allmoves) {
+        if (board_[i][j] == -1) {
+            board_[i][j] = sophisticated_queue[turn + 1];
+            int result = makeMinimaxWithDepth3(i, j, depth + 1, turn + 1, hash ^ ZobristTable[i][j][sophisticated_queue[turn + 1]]);
+            if (ans == -INF) {
+                ans = result;
+            }
+            else if (sophisticated_queue[turn] == currentPlayer_) {
+                ans = std::min(ans, result);
+            }
+            else {
+                ans = std::max(ans, result);
+            }
+            board_[i][j] = -1;
+            winner_ = -1;
+        }
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time) > time_limit) {
+            break;
+        }
+    }
+    if (ans == -INF) {
+        ans = 0;
+    }
+    costPosition[hash] = ans;
+    return ans;
+}
+
+void XYK::makeMinimaxWithDepth3Move() {
+    std::vector<std::pair<int, int>> allmoves = allowedMoves(board_);
+    std::pair<int, int> ans;
+    int val = -INF;
+    start_time = std::chrono::steady_clock::now();
+    for (auto [i, j] : allmoves) {
+        if (board_[i][j] == -1) {
+            board_[i][j] = currentPlayer_;
+            int tmp = makeMinimaxWithDepth3(i, j, 0, currentTurn, currentHash ^ ZobristTable[i][j][currentPlayer_]);
             if (tmp > val) {
                 val = tmp;
                 ans = { i, j };
@@ -505,7 +586,7 @@ void XYK::makeRadialSearchMove() {
     makeMove(ans.first, ans.second);
 }
 
-struct XYK::Node {
+struct Node {
     std::vector<std::vector<int>> board;
     int turn; // current turn in this node
     std::pair<int, int> move; // move that we did to get into this node
@@ -526,11 +607,11 @@ struct XYK::Node {
         }
     }
 
-    Node* selectChild() {
+    Node* selectChild(double c) {
         Node* bestChild = nullptr;
         double bestValue = -1;
         for (auto child : children) {
-            double uct = (double)child->wins / child->visits + sqrtl(2 * log(visits + 1) / child->visits);
+            double uct = (double)child->wins / child->visits + c * sqrtl(log(visits + 1) / child->visits);
             if (uct > bestValue) {
                 bestValue = uct;
                 bestChild = child;
@@ -554,33 +635,65 @@ struct XYK::Node {
         return child;
     }
 
-    void update(double result) {
-        visits++;
+    void update(double result, int vis) {
+        visits += vis;
         wins += result;
     }
 };
 
-int XYK::simulate(std::vector<std::vector<int>> board, int turn, std::pair<int, int> last) {
+int simulate(std::vector<std::vector<int>> board, int turn, std::pair<int, int> last) {
     int win = giveWinner(last.first, last.second, board);
     if (win != -1) {
         return win;
     }
-    while (true) {
-        std::vector<std::pair<int, int>> moves = allowedMoves(board);
-        if (moves.empty()) {
-            return -1;
+    std::vector<std::pair<int, int>> moves;
+    for (int i = 0; i < M_GRID_SIZE; i++) {
+        for (int j = 0; j < N_GRID_SIZE; j++) {
+            if (board[i][j] == EMPTY) {
+                moves.push_back({ i, j });
+            }
         }
-        int index = gen() % moves.size();
-        board[moves[index].first][moves[index].second] = sophisticated_queue[turn];
-        int win = giveWinner(moves[index].first, moves[index].second, board);
+    }
+    std::shuffle(moves.begin(), moves.end(), gen);
+    int i = 0;
+    while (i < moves.size()) {
+        board[moves[i].first][moves[i].second] = sophisticated_queue[turn];
+        int win = giveWinner(moves[i].first, moves[i].second, board);
         if (win != -1) {
             return win;
         }
+        i++;
         turn++;
     }
+    return -1;
 }
 
-std::pair<int, int> XYK::MCTS(std::vector<std::vector<int>> rootBoard, int currentturn) {
+std::atomic<int> total_0(0);
+std::atomic<int> total_1(0);
+std::atomic<int> total_draw(0);
+
+void paralel_simulate(int iter, std::vector<std::vector<int>> board, int turn, std::pair<int, int> last) {
+    int ltotal_0 = 0;
+    int ltotal_1 = 0;
+    int ltotal_draw = 0;
+    for (int _ = 0; _ < iter; _++) {
+        int result = simulate(board, turn, last);
+        if (result == -1) {
+            ltotal_draw++;
+        }
+        else if (result == 0) {
+            ltotal_0++;
+        }
+        else {
+            ltotal_1++;
+        }
+    }
+    total_0 += ltotal_0;
+    total_1 += ltotal_1;
+    total_draw += ltotal_draw;
+}
+
+std::pair<int, int> MCTS(double c, std::vector<std::vector<int>> rootBoard, int currentturn) {
     std::vector<std::pair<int, int>> legal = allowedMoves(rootBoard);
 
     if (legal.empty()) {
@@ -647,7 +760,7 @@ std::pair<int, int> XYK::MCTS(std::vector<std::vector<int>> rootBoard, int curre
         int result = -1;
         // Selection
         while (node->untriedMoves.empty() && !node->children.empty()) {
-            node = node->selectChild();
+            node = node->selectChild(c);
             board[node->move.first][node->move.second] = sophisticated_queue[turn];
             last = node->move;
             turn = node->turn;
@@ -662,24 +775,78 @@ std::pair<int, int> XYK::MCTS(std::vector<std::vector<int>> rootBoard, int curre
             turn = node->turn;
         }
 
-        // Simulation
-        if (result == -1) {
-            result = simulate(board, turn, last);
-        }
+        // Paralel simulation
+        //int total = 800, num_threads = std::thread::hardware_concurrency();
+        //int it = total / num_threads;
+        //total_0 = 0;
+        //total_1 = 0;
+        //total_draw = 0;
+        //std::vector<std::thread> threads;
+        //threads.reserve(total);
+        //for (int i = 0; i < num_threads; i++) {
+        //    threads.emplace_back(paralel_simulate, it, board, turn, last);
+        //}
+        //for (auto& i : threads) {
+        //    i.join();
+        //}
+        //// Backpropagation
+        //while (node != nullptr) {
+        //    node->update(0.5 * total_draw, total);
+        //    if (sophisticated_queue[node->turn] == 0) {
+        //        node->update(total_1, 0);
+        //    }
+        //    else {
+        //        node->update(total_0, 0);
+        //    }
+        //    node = node->parent;
+        //}
 
-        // Backpropagation
-        while (node != nullptr) {
-            if (sophisticated_queue[node->turn] == result) {
-                node->update(0);
+        // Paralel simulation one thread
+        int total = 16;
+        int ltotal_0 = 0;
+        int ltotal_1 = 0;
+        int ltotal_draw = 0;
+        for (int _ = 0; _ < total; _++) {
+            int result = simulate(board, turn, last);
+            if (result == -1) {
+                ltotal_draw++;
             }
-            else if (result == -1) {
-                node->update(0.5);
+            else if (result == 0) {
+                ltotal_0++;
             }
             else {
-                node->update(1);
+                ltotal_1++;
+            }
+        }
+        // Backpropagation
+        while (node != nullptr) {
+            node->update(0.5 * ltotal_draw, total);
+            if (sophisticated_queue[node->turn] == 0) {
+                node->update(ltotal_1, 0);
+            }
+            else {
+                node->update(ltotal_0, 0);
             }
             node = node->parent;
         }
+
+        //// Simulation
+        //if (result == -1) {
+        //    result = simulate(board, turn, last);
+        //}
+        //// Backpropagation
+        //while (node != nullptr) {
+        //    if (sophisticated_queue[node->turn] == result) {
+        //        node->update(0, 1);
+        //    }
+        //    else if (result == -1) {
+        //        node->update(0.5, 1);
+        //    }
+        //    else {
+        //        node->update(1, 1);
+        //    }
+        //    node = node->parent;
+        //}
     }
 
     Node* bestChild = nullptr;
@@ -696,6 +863,15 @@ std::pair<int, int> XYK::MCTS(std::vector<std::vector<int>> rootBoard, int curre
     return bestMove;
 }
 
+std::mutex mutex;
+std::map<std::pair<int, int>, int> bestMoves;
+
+void threadWork(std::vector<std::vector<int>> rootBoard, int position) {
+    auto ans = MCTS((double)gen() / RAND_MAX / RAND_MAX / 4 + 1, rootBoard, position);
+    std::lock_guard<std::mutex> lock(mutex);
+    bestMoves[ans]++;
+}
+
 void XYK::makeMCTSmove() {
     int position = currentTurn;
     if (QUEUE == 1) {
@@ -705,11 +881,32 @@ void XYK::makeMCTSmove() {
         position = 1;
     }
     else if (QUEUE == 3) {
-        position = 1; //                                        NEED TO FIX
+        position = 0;
     }
     else if (QUEUE == 4) {
-        position = 1; //                                        NEED TO FIX
+        position = currentTurn;
     }
-    auto ans = MCTS(board_, position);
-    makeMove(ans.first, ans.second);
+    /*auto ans = MCTS(board_, position);
+    makeMove(ans.first, ans.second);*/
+
+    // Paralel MCTS
+    int num_threads = std::thread::hardware_concurrency();
+    std::vector<std::thread> threads;
+    threads.reserve(num_threads);
+    for (int i = 0; i < num_threads; i++) {
+        threads.emplace_back(threadWork, getBoard(), position);
+    }
+    for (auto& i : threads) {
+        i.join();
+    }
+    std::pair<int, int> best;
+    int res = 0;
+    for (auto [i, j] : bestMoves) {
+        if (j > res) {
+            res = j;
+            best = i;
+        }
+    }
+    bestMoves.clear();
+    makeMove(best.first, best.second);
 }

@@ -82,7 +82,7 @@ int XYK::evaluatePosition(int x, int y, int player_) {
             ans += patterns[0];
         }
         else if (cnt1 + cnt2 >= NEED_FIRST && free1 >= 1 && free2 >= 1) {
-            ans += patterns[2];
+            ans += patterns[1];
         }
         else if (cnt1 + cnt2 + 1 >= NEED_FIRST && (free1 == 0 || free2 == 0)) {
             ans += patterns[4];
@@ -95,7 +95,7 @@ int XYK::evaluatePosition(int x, int y, int player_) {
         }
 
         if (cntt1 + cntt2 - 1 >= NEED_SECOND) {
-            ans += patterns[1];
+            ans += patterns[2];
         }
         else if (cntt1 + cntt2 >= NEED_SECOND && freee1 >= 1 && freee2 >= 1) {
             ans += patterns[3];

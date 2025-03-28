@@ -1,18 +1,20 @@
 #pragma once
 #include <chrono>
+#include <future>
 #include <map>
 #include <random>
+#include <thread>
 #include <vector>
 
-inline int N_GRID_SIZE = 3;
-inline int M_GRID_SIZE = 3;
+inline int N_GRID_SIZE = 15;
+inline int M_GRID_SIZE = 15;
 inline int CELL_SIZE = 50;
 inline int N_WINDOW_SIZE = N_GRID_SIZE * CELL_SIZE;
 inline int M_WINDOW_SIZE = M_GRID_SIZE * CELL_SIZE;
 inline int EMPTY = -1;
 inline int BORDER = 5;
-inline int NEED_FIRST = 3;
-inline int NEED_SECOND = 3;
+inline int NEED_FIRST = 5;
+inline int NEED_SECOND = 5;
 inline int QUEUE = 0;
 inline int FIRST_PLAYER = 0;
 inline int SECOND_PLAYER = 0;
@@ -27,8 +29,8 @@ inline const int MAX_LOG_GRID_SIZE = 6;
 inline double PROBABILITY = 0.5;
 inline unsigned long long int currentHash = 0;
 inline std::chrono::steady_clock::time_point start_time;
-inline std::chrono::milliseconds time_limit(3000);
-inline std::chrono::milliseconds time_limit_for_MCST(3000);
+inline std::chrono::seconds time_limit(5);
+inline std::chrono::seconds time_limit_for_MCST(5);
 inline std::vector<std::pair<int, int>> CheckDirections = { {1,1}, {1,0}, {0,1}, {1,-1} };
 // patterns for first:
 // x-1 rocks: 1000000
@@ -40,7 +42,7 @@ inline std::vector<std::pair<int, int>> CheckDirections = { {1,1}, {1,0}, {0,1},
 // close your rocks: 10
 // close enemy rocks: 1
 // 
-inline std::vector<int> patterns = { 1000000, 5000, 80000, 4000, 1000, 2000, 10, 1 };
+inline std::vector<int> patterns = { 1000000, 10000, 80000, 4000, 2000, 1000, 10, 1 };
 inline std::vector<int> sophisticated_queue;
 inline std::vector<std::vector<std::vector<unsigned long long int>>> ZobristTable;
 inline std::map<unsigned long long int, int> costPosition;
@@ -57,9 +59,6 @@ public:
 
     // Reset
     void reset();
-
-    // Check that point in grid
-    static bool InGrid(int x, int y);
 
     // Make move
     bool makeMove(int x, int y);
@@ -124,6 +123,10 @@ public:
 
     void makeMinimaxWithDepth2Move();
 
+    int makeMinimaxWithDepth3(int x, int y, int depth, int turn, unsigned long long int hash);
+
+    void makeMinimaxWithDepth3Move();
+
     // luchevoi poisk v shirinu
     int makeRadialSearch(int x, int y, int depth, int turn, unsigned long long int hash);
 
@@ -132,19 +135,7 @@ public:
     // geneticheskiy algorithm is too slow
     // because of a lot of variants of boards and conditions for win it's stupid to learn bots
 
-    static std::vector<std::pair<int, int>> allowedMoves(std::vector<std::vector<int>>& board);
-
-    static int giveWinner(int x, int y, std::vector<std::vector<int>>& board);
-
-    // monte carlo
-    struct Node;
-
-    int simulate(std::vector<std::vector<int>> board, int turn, std::pair<int, int> last);
-
-    std::pair<int, int> MCTS(std::vector<std::vector<int>> rootBoard, int currentturn);
-
     void makeMCTSmove();
-
     // ant colonie is a not good algorithm for this game, MCTS is more better
 
 private:
@@ -154,3 +145,20 @@ private:
     int winner_;
 };
 
+// monte carlo
+struct Node;
+
+std::vector<std::pair<int, int>> allowedMoves(std::vector<std::vector<int>>& board);
+
+std::pair<int, int> MCTS(std::vector<std::vector<int>> rootBoard, int currentturn);
+
+void threadWork(std::vector<std::vector<int>> rootBoard, int position);
+
+int simulate(std::vector<std::vector<int>> board, int turn, std::pair<int, int> last);
+
+void paralel_simulate(int iter, std::vector<std::vector<int>> board, int turn, std::pair<int, int> last);
+
+int giveWinner(int x, int y, std::vector<std::vector<int>>& board);
+
+// Check that point in grid
+bool InGrid(int x, int y);

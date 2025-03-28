@@ -32,39 +32,39 @@
     </Font>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="xyk.h">
-      <Filter>Исходные файлы\src\xyk</Filter>
+    <ClInclude Include="lib\Graphics.hpp">
+      <Filter>Файлы заголовков</Filter>
     </ClInclude>
-    <ClInclude Include="ui.h">
-      <Filter>Исходные файлы\src\ui</Filter>
+    <ClInclude Include="src\ui\ui.h">
+      <Filter>Файлы заголовков</Filter>
     </ClInclude>
-    <ClInclude Include="Graphics.hpp">
-      <Filter>Исходные файлы\lib</Filter>
+    <ClInclude Include="src\xyk\xyk.h">
+      <Filter>Файлы заголовков</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
-      <Filter>Исходные файлы\src</Filter>
-    </ClCompile>
-    <ClCompile Include="xyk.cpp">
+    <ClCompile Include="src\xyk\bots.cpp">
       <Filter>Исходные файлы\src\xyk</Filter>
     </ClCompile>
-    <ClCompile Include="menu.cpp">
-      <Filter>Исходные файлы\src\ui</Filter>
-    </ClCompile>
-    <ClCompile Include="winner.cpp">
-      <Filter>Исходные файлы\src\ui</Filter>
-    </ClCompile>
-    <ClCompile Include="grid.cpp">
-      <Filter>Исходные файлы\src\ui</Filter>
-    </ClCompile>
-    <ClCompile Include="game_window.cpp">
-      <Filter>Исходные файлы\src\ui</Filter>
-    </ClCompile>
-    <ClCompile Include="bots.cpp">
+    <ClCompile Include="src\xyk\eval.cpp">
       <Filter>Исходные файлы\src\xyk</Filter>
     </ClCompile>
-    <ClCompile Include="eval.cpp">
+    <ClCompile Include="src\ui\game_window.cpp">
+      <Filter>Исходные файлы\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ui\grid.cpp">
+      <Filter>Исходные файлы\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\main.cpp">
+      <Filter>Исходные файлы\src\xyk</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ui\menu.cpp">
+      <Filter>Исходные файлы\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ui\winner.cpp">
+      <Filter>Исходные файлы\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\xyk\xyk.cpp">
       <Filter>Исходные файлы\src\xyk</Filter>
     </ClCompile>
   </ItemGroup>

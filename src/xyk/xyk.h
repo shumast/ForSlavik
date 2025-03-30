@@ -42,7 +42,8 @@ inline std::vector<std::pair<int, int>> CheckDirections = { {1,1}, {1,0}, {0,1},
 // close your rocks: 10
 // close enemy rocks: 1
 // 
-inline std::vector<int> patterns = { 1000000, 10000, 80000, 4000, 2000, 1000, 10, 1 };
+inline std::vector<int> patterns_initial = { 1000000, 10000, 80000, 4000, 2000, 1000, 10, 1 };
+inline std::vector<int> patterns = { 899, 866, 263, 258, 200, 175, 54, 16 };
 inline std::vector<int> sophisticated_queue;
 inline std::vector<std::vector<std::vector<unsigned long long int>>> ZobristTable;
 inline std::map<unsigned long long int, int> costPosition;
